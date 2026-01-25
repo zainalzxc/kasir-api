@@ -11,8 +11,10 @@ import (
 	"encoding/json" // Package untuk encode/decode JSON
 	"fmt"           // Package untuk print ke console
 	"net/http"      // Package untuk membuat HTTP server
-	"strconv"       // Package untuk convert string ke integer (dan sebaliknya)
-	"strings"       // Package untuk manipulasi string (misal: TrimPrefix)
+	"os"
+	// Package untuk akses environment variables
+	"strconv" // Package untuk convert string ke integer (dan sebaliknya)
+	"strings" // Package untuk manipulasi string (misal: TrimPrefix)
 )
 
 // ==================== STRUCT & DATA ====================
@@ -310,7 +312,13 @@ func main() {
 	})
 
 	// ==================== START SERVER ====================
-	fmt.Println("Server running di localhost:8080")
+	// Get port from environment variable (untuk Railway) atau default 8080 (untuk local)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // Default port untuk development local
+	}
+
+	fmt.Println("Server running di port:", port)
 	fmt.Println("Tekan Ctrl+C untuk stop server")
 	fmt.Println("")
 	fmt.Println("Endpoint yang tersedia:")
@@ -326,8 +334,8 @@ func main() {
 	fmt.Println("- PUT    /api/categories/{id}")
 	fmt.Println("- DELETE /api/categories/{id}")
 
-	err := http.ListenAndServe(":8080", nil) // Start server di port 8080
-	if err != nil {                          // Kalau ada error saat start server
+	err := http.ListenAndServe(":"+port, nil) // Start server di port dari environment atau 8080
+	if err != nil {                           // Kalau ada error saat start server
 		fmt.Println("Gagal running server:", err) // Tampilkan error detail
 	}
 }

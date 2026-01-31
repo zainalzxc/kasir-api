@@ -59,8 +59,36 @@ func LoadConfig() (*Config, error) {
 // GetDatabaseURL returns the database URL with fallback to default
 func (c *Config) GetDatabaseURL() string {
 	if c.DBConn != "" {
-		return c.DBConn
+		// Check if connection string already has statement_cache_mode parameter
+		// If not, append it to fix prepared statement cache issues with Supabase Pooler
+		connStr := c.DBConn
+
+		// Check if it's a PostgreSQL connection string format
+		// If it contains "?" it already has parameters, use "&", otherwise use "?"
+		if len(connStr) > 0 {
+			// Add statement_cache_mode parameter to disable prepared statement caching
+			// This fixes "prepared statement already exists" error with connection pooling
+			if connStr[len(connStr)-1] == '?' || connStr[len(connStr)-1] == '&' {
+				connStr += "statement_cache_mode=describe"
+			} else if contains(connStr, "?") {
+				connStr += "&statement_cache_mode=describe"
+			} else {
+				connStr += "?statement_cache_mode=describe"
+			}
+		}
+
+		return connStr
 	}
 	// Default local PostgreSQL connection
 	return "host=localhost user=postgres password=postgres dbname=kasir_db port=5432 sslmode=disable"
+}
+
+// contains checks if a string contains a substring
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

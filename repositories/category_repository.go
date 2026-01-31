@@ -51,24 +51,43 @@ func (r *CategoryRepository) GetAll() ([]models.Category, error) {
 	return categories, nil // Return slice categories dan nil (no error)
 }
 
-// GetByID retrieves a category by ID
-// Fungsi ini mengambil 1 kategori berdasarkan ID
+// GetByID retrieves a category by ID with its products
+// Fungsi ini mengambil 1 kategori berdasarkan ID beserta semua products dalam category tersebut
 func (r *CategoryRepository) GetByID(id int) (*models.Category, error) {
-	// SQL query dengan placeholder $1 (untuk parameter id)
+	// 1. Ambil category data
 	query := "SELECT id, nama, description FROM categories WHERE id = $1"
+	row := r.db.QueryRow(query, id)
 
-	// QueryRow untuk query yang return 1 row saja
-	row := r.db.QueryRow(query, id) // id akan replace $1
-
-	var category models.Category // Buat variable untuk menampung hasil
-
-	// Scan hasil query ke struct category
+	var category models.Category
 	err := row.Scan(&category.ID, &category.Nama, &category.Description)
 	if err != nil {
 		return nil, err // Kalau tidak ketemu atau error, return nil
 	}
 
-	return &category, nil // Return pointer ke category
+	// 2. Ambil semua products yang punya category_id ini
+	productsQuery := "SELECT id, nama, harga, stok FROM products WHERE category_id = $1"
+	rows, err := r.db.Query(productsQuery, id)
+	if err != nil {
+		// Kalau error query products, tetap return category (tanpa products)
+		return &category, nil
+	}
+	defer rows.Close()
+
+	// 3. Loop semua products dan tambahkan ke category.Products
+	var products []models.Product
+	for rows.Next() {
+		var product models.Product
+		err := rows.Scan(&product.ID, &product.Nama, &product.Harga, &product.Stok)
+		if err != nil {
+			continue // Skip product yang error
+		}
+		products = append(products, product)
+	}
+
+	// 4. Set products ke category
+	category.Products = products
+
+	return &category, nil
 }
 
 // Create adds a new category to database

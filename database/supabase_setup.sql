@@ -18,15 +18,15 @@
 -- Table untuk menyimpan data produk
 CREATE TABLE IF NOT EXISTS products (
     id SERIAL PRIMARY KEY,
-    nama VARCHAR(255) NOT NULL,
+    nama VARCHAR(255) NOT NULL UNIQUE,  -- UNIQUE constraint untuk mencegah duplikasi nama
     harga INTEGER NOT NULL CHECK (harga >= 0),
     stok INTEGER NOT NULL CHECK (stok >= 0),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index untuk mempercepat pencarian berdasarkan nama
-CREATE INDEX IF NOT EXISTS idx_products_nama ON products(nama);
+-- Index UNIQUE untuk mempercepat pencarian berdasarkan nama
+CREATE UNIQUE INDEX IF NOT EXISTS idx_products_nama ON products(nama);
 
 -- ============================================
 -- 2. CREATE TABLE: CATEGORIES

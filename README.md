@@ -123,7 +123,7 @@ Server akan berjalan di `http://localhost:8080`
 
 ### Products
 - `GET /api/produk` - Get all products
-- `POST /api/produk` - Create new product
+- `POST /api/produk` - Create new product (auto-update stock if product name exists)
 - `GET /api/produk/{id}` - Get product by ID
 - `PUT /api/produk/{id}` - Update product
 - `DELETE /api/produk/{id}` - Delete product

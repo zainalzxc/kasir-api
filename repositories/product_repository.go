@@ -72,16 +72,27 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 	return &product, nil // Return pointer ke product
 }
 
-// Create adds a new product to database
-// Fungsi ini menambahkan produk baru ke database
+// Create adds a new product to database or updates stock if product exists
+// Fungsi ini menambahkan produk baru ATAU menambah stok jika produk dengan nama sama sudah ada
 func (r *ProductRepository) Create(product *models.Product) error {
-	// SQL query untuk INSERT
-	// RETURNING id = return ID yang baru dibuat (auto-increment)
-	query := "INSERT INTO products (nama, harga, stok) VALUES ($1, $2, $3) RETURNING id"
+	// SQL query dengan UPSERT logic (INSERT ... ON CONFLICT ... DO UPDATE)
+	// Jika produk dengan nama yang sama sudah ada, maka:
+	// - Stok akan ditambahkan (stok lama + stok baru)
+	// - Harga akan diupdate dengan harga terbaru
+	// Jika belum ada, akan insert produk baru
+	query := `
+		INSERT INTO products (nama, harga, stok) 
+		VALUES ($1, $2, $3)
+		ON CONFLICT (nama) 
+		DO UPDATE SET 
+			harga = EXCLUDED.harga,
+			stok = products.stok + EXCLUDED.stok
+		RETURNING id, stok
+	`
 
-	// Execute query dan langsung scan ID yang di-return
+	// Execute query dan scan ID + stok terbaru yang di-return
 	// $1 = product.Nama, $2 = product.Harga, $3 = product.Stok
-	err := r.db.QueryRow(query, product.Nama, product.Harga, product.Stok).Scan(&product.ID)
+	err := r.db.QueryRow(query, product.Nama, product.Harga, product.Stok).Scan(&product.ID, &product.Stok)
 
 	return err // Return error (nil kalau sukses)
 }

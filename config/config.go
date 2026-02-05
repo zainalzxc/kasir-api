@@ -59,22 +59,21 @@ func LoadConfig() (*Config, error) {
 // GetDatabaseURL returns the database URL with fallback to default
 func (c *Config) GetDatabaseURL() string {
 	if c.DBConn != "" {
-		// Check if connection string already has statement_cache_mode parameter
-		// If not, append it to fix prepared statement cache issues with Supabase Pooler
 		connStr := c.DBConn
 
-		// Check if it's a PostgreSQL connection string format
-		// If it contains "?" it already has parameters, use "&", otherwise use "?"
-		if len(connStr) > 0 {
-			// Add statement_cache_mode parameter to disable prepared statement caching
-			// This fixes "prepared statement already exists" error with connection pooling
-			if connStr[len(connStr)-1] == '?' || connStr[len(connStr)-1] == '&' {
-				connStr += "statement_cache_mode=describe"
-			} else if contains(connStr, "?") {
-				connStr += "&statement_cache_mode=describe"
-			} else {
-				connStr += "?statement_cache_mode=describe"
-			}
+		// Jika sudah ada statement_cache_mode, skip
+		if contains(connStr, "statement_cache_mode") {
+			return connStr
+		}
+
+		// Tambahkan statement_cache_mode=describe untuk fix prepared statement error
+		// dengan PostgreSQL connection pooler (Railway/Supabase)
+		if contains(connStr, "?") {
+			// Sudah ada query parameters, tambahkan dengan &
+			connStr += "&statement_cache_mode=describe"
+		} else {
+			// Belum ada query parameters, tambahkan dengan ?
+			connStr += "?statement_cache_mode=describe"
 		}
 
 		return connStr

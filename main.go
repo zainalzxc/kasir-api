@@ -43,6 +43,16 @@ func main() {
 	categoryService := services.NewCategoryService(categoryRepo)    // Inject repo ke service
 	categoryHandler := handlers.NewCategoryHandler(categoryService) // Inject service ke handler
 
+	// Transaction layers
+	transactionRepo := repositories.NewTransactionRepository(db)             // Inject db ke repository
+	transactionService := services.NewTransactionService(transactionRepo)    // Inject repo ke service
+	transactionHandler := handlers.NewTransactionHandler(transactionService) // Inject service ke handler
+
+	// Report layers
+	reportRepo := repositories.NewReportRepository(db)        // Inject db ke repository
+	reportService := services.NewReportService(reportRepo)    // Inject repo ke service
+	reportHandler := handlers.NewReportHandler(reportService) // Inject service ke handler
+
 	// ==================== ROUTING ====================
 	// Routing = mapping URL ke handler function
 
@@ -70,6 +80,17 @@ func main() {
 	// /api/categories (tanpa slash) -> untuk endpoint tanpa ID
 	http.HandleFunc("/api/categories", categoryHandler.HandleCategories)
 
+	// Transaction routes
+	// POST /api/checkout -> untuk checkout/create transaction
+	http.HandleFunc("/api/checkout", transactionHandler.Checkout)
+
+	// Report routes
+	// GET /api/report/hari-ini -> untuk laporan penjualan hari ini
+	http.HandleFunc("/api/report/hari-ini", reportHandler.GetDailySalesReport)
+
+	// GET /api/report -> untuk laporan penjualan berdasarkan rentang tanggal
+	http.HandleFunc("/api/report", reportHandler.GetSalesReportByDateRange)
+
 	// ==================== START SERVER ====================
 	// Get port from config
 	port := cfg.Port
@@ -88,6 +109,9 @@ func main() {
 	fmt.Println("  - GET    /api/categories/{id}")
 	fmt.Println("  - PUT    /api/categories/{id}")
 	fmt.Println("  - DELETE /api/categories/{id}")
+	fmt.Println("  - POST   /api/checkout")
+	fmt.Println("  - GET    /api/report/hari-ini")
+	fmt.Println("  - GET    /api/report?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD")
 
 	// Start HTTP server
 	// ListenAndServe akan block (program tidak akan lanjut ke baris berikutnya)

@@ -55,9 +55,14 @@ func (h *ProductHandler) HandleProductByID(w http.ResponseWriter, r *http.Reques
 
 // GetAll retrieves all products
 // Fungsi ini handle GET /api/produk
+// Support query parameter: ?name=xxx untuk search by name
 func (h *ProductHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	// Panggil service untuk ambil semua produk
-	products, err := h.service.GetAll()
+	// Ambil query parameter 'name' dari URL
+	// Contoh: /api/produk?name=indom -> searchName = "indom"
+	searchName := r.URL.Query().Get("name")
+
+	// Panggil service untuk ambil produk (dengan atau tanpa filter)
+	products, err := h.service.GetAll(searchName)
 	if err != nil {
 		// Kalau error, kirim HTTP error 500 (Internal Server Error)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

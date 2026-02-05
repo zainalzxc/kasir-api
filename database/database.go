@@ -35,7 +35,7 @@ func InitDB(dsn string) *sql.DB {
 	return db // Return pointer ke database connection
 }
 
-// createTables membuat table products dan categories jika belum ada
+// createTables membuat table products, categories, transactions, dan transaction_details jika belum ada
 func createTables(db *sql.DB) {
 	// SQL untuk create table products
 	// SERIAL = auto-increment integer
@@ -72,6 +72,59 @@ func createTables(db *sql.DB) {
 	if err != nil {
 		// Kalau gagal create table, stop aplikasi
 		log.Fatal("❌ Failed to create categories table:", err)
+	}
+
+	// SQL untuk create table transactions
+	// DECIMAL(10, 2) = angka desimal dengan 10 digit total, 2 digit di belakang koma
+	// TIMESTAMP = tanggal dan waktu
+	// DEFAULT CURRENT_TIMESTAMP = otomatis diisi dengan waktu sekarang
+	transactionsTable := `
+	CREATE TABLE IF NOT EXISTS transactions (
+		id SERIAL PRIMARY KEY,
+		total_amount DECIMAL(10, 2) NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`
+
+	// Execute SQL query untuk create table transactions
+	_, err = db.Exec(transactionsTable)
+	if err != nil {
+		// Kalau gagal create table, stop aplikasi
+		log.Fatal("❌ Failed to create transactions table:", err)
+	}
+
+	// SQL untuk create table transaction_details
+	// REFERENCES = foreign key ke table lain
+	// ON DELETE CASCADE = jika transaction dihapus, detail juga ikut terhapus
+	transactionDetailsTable := `
+	CREATE TABLE IF NOT EXISTS transaction_details (
+		id SERIAL PRIMARY KEY,
+		transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+		product_id INTEGER NOT NULL REFERENCES products(id),
+		quantity INTEGER NOT NULL,
+		price DECIMAL(10, 2) NOT NULL,
+		subtotal DECIMAL(10, 2) NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`
+
+	// Execute SQL query untuk create table transaction_details
+	_, err = db.Exec(transactionDetailsTable)
+	if err != nil {
+		// Kalau gagal create table, stop aplikasi
+		log.Fatal("❌ Failed to create transaction_details table:", err)
+	}
+
+	// Create indexes untuk mempercepat query
+	indexes := []string{
+		`CREATE INDEX IF NOT EXISTS idx_transaction_details_transaction_id ON transaction_details(transaction_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_transaction_details_product_id ON transaction_details(product_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at)`,
+	}
+
+	for _, indexSQL := range indexes {
+		_, err = db.Exec(indexSQL)
+		if err != nil {
+			log.Fatal("❌ Failed to create index:", err)
+		}
 	}
 
 	fmt.Println("✅ Tables created/verified successfully")

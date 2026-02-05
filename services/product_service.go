@@ -20,10 +20,11 @@ func NewProductService(repo *repositories.ProductRepository) *ProductService {
 
 // GetAll retrieves all products
 // Fungsi ini memanggil repository untuk ambil semua produk
-func (s *ProductService) GetAll() ([]models.Product, error) {
-	// Langsung panggil repository
+// Parameter searchName untuk filter by name (kosong = ambil semua)
+func (s *ProductService) GetAll(searchName string) ([]models.Product, error) {
+	// Panggil repository dengan parameter searchName
 	// Di sini bisa tambah logic seperti: filter, sorting, dll
-	return s.repo.GetAll()
+	return s.repo.GetAll(searchName)
 }
 
 // GetByID retrieves a product by ID

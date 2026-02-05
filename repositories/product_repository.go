@@ -19,7 +19,8 @@ func NewProductRepository(db *sql.DB) *ProductRepository {
 
 // GetAll retrieves all products from database
 // Fungsi ini mengambil semua produk dari table products
-func (r *ProductRepository) GetAll() ([]models.Product, error) {
+// Parameter searchName untuk filter by name (kosong = ambil semua)
+func (r *ProductRepository) GetAll(searchName string) ([]models.Product, error) {
 	// SQL query dengan LEFT JOIN ke table categories
 	// LEFT JOIN = ambil semua products, meskipun tidak punya category
 	query := `
@@ -36,8 +37,19 @@ func (r *ProductRepository) GetAll() ([]models.Product, error) {
 		LEFT JOIN categories c ON p.category_id = c.id
 	`
 
+	// Buat slice untuk menampung arguments query
+	var args []interface{}
+
+	// Jika searchName tidak kosong, tambahkan WHERE clause untuk filter
+	if searchName != "" {
+		query += " WHERE p.nama ILIKE $1"
+		// ILIKE = case-insensitive LIKE
+		// % di awal dan akhir = search di mana saja dalam string
+		args = append(args, "%"+searchName+"%")
+	}
+
 	// Execute query dan dapatkan rows (banyak baris)
-	rows, err := r.db.Query(query)
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err // Kalau error, return nil dan error
 	}

@@ -63,18 +63,20 @@ func (c *Config) GetDatabaseURL() string {
 
 		// Jika sudah ada statement_cache_mode, skip
 		if contains(connStr, "statement_cache_mode") {
+			log.Println("✅ Connection string already has statement_cache_mode parameter")
 			return connStr
 		}
 
 		// Tambahkan statement_cache_mode=describe untuk fix prepared statement error
 		// dengan PostgreSQL connection pooler (Railway/Supabase)
+		separator := "?"
 		if contains(connStr, "?") {
 			// Sudah ada query parameters, tambahkan dengan &
-			connStr += "&statement_cache_mode=describe"
-		} else {
-			// Belum ada query parameters, tambahkan dengan ?
-			connStr += "?statement_cache_mode=describe"
+			separator = "&"
 		}
+
+		connStr += separator + "statement_cache_mode=describe"
+		log.Println("✅ Added statement_cache_mode=describe to connection string")
 
 		return connStr
 	}

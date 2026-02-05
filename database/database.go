@@ -21,6 +21,13 @@ func InitDB(dsn string) *sql.DB {
 		log.Fatal("❌ Failed to connect to database:", err)
 	}
 
+	// Set connection pool settings untuk compatibility dengan PostgreSQL pooler
+	// MaxOpenConns: maksimal koneksi yang bisa dibuka
+	// MaxIdleConns: maksimal koneksi idle yang disimpan
+	// Ini penting untuk pooler seperti Railway/Supabase
+	db.SetMaxOpenConns(10) // Batasi max connections
+	db.SetMaxIdleConns(5)  // Batasi idle connections
+
 	// Test koneksi dengan Ping (ini yang benar-benar connect)
 	err = db.Ping()
 	if err != nil {

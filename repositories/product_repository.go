@@ -44,8 +44,8 @@ func (r *ProductRepository) GetAll(searchName string) ([]models.Product, error) 
 	if searchName != "" {
 		query += " WHERE p.nama ILIKE $1"
 		// ILIKE = case-insensitive LIKE
-		// % di awal dan akhir = search di mana saja dalam string
-		args = append(args, "%"+searchName+"%")
+		// % hanya di akhir = search yang dimulai dengan searchName (prefix match)
+		args = append(args, searchName+"%")
 	}
 
 	// Execute query dan dapatkan rows (banyak baris)

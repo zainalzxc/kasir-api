@@ -58,7 +58,7 @@ func (h *ProductHandler) HandleProductByID(w http.ResponseWriter, r *http.Reques
 // Support query parameter: ?name=xxx untuk search by name
 func (h *ProductHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	// Ambil query parameter 'name' dari URL
-	// Contoh: /api/produk?name=indom -> searchName = "indom"
+	// Contoh: /api/produk?name=te -> searchName = "te"
 	searchName := r.URL.Query().Get("name")
 
 	// Panggil service untuk ambil produk (dengan atau tanpa filter)

@@ -61,27 +61,28 @@ func (c *Config) GetDatabaseURL() string {
 	if c.DBConn != "" {
 		connStr := c.DBConn
 
-		// Jika sudah ada statement_cache_mode, skip
-		if contains(connStr, "statement_cache_mode") {
-			log.Println("✅ Connection string already has statement_cache_mode parameter")
+		// Jika sudah ada default_query_exec_mode, skip
+		if contains(connStr, "default_query_exec_mode") {
+			log.Println("✅ Connection string already has default_query_exec_mode parameter")
 			return connStr
 		}
 
-		// Tambahkan statement_cache_mode=describe untuk fix prepared statement error
-		// dengan PostgreSQL connection pooler (Railway/Supabase)
+		// Tambahkan default_query_exec_mode=simple_protocol untuk disable prepared statements
+		// Ini fix error "prepared statement already exists" yang sering muncul
+		// dengan PostgreSQL connection pooler (Railway/Supabase/PgBouncer)
 		separator := "?"
 		if contains(connStr, "?") {
 			// Sudah ada query parameters, tambahkan dengan &
 			separator = "&"
 		}
 
-		connStr += separator + "statement_cache_mode=describe"
-		log.Println("✅ Added statement_cache_mode=describe to connection string")
+		connStr += separator + "default_query_exec_mode=simple_protocol"
+		log.Println("✅ Added default_query_exec_mode=simple_protocol to connection string")
 
 		return connStr
 	}
 	// Default local PostgreSQL connection
-	return "host=localhost user=postgres password=postgres dbname=kasir_db port=5432 sslmode=disable"
+	return "host=localhost user=postgres password=postgres dbname=kasir_db port=5432 sslmode=disable default_query_exec_mode=simple_protocol"
 }
 
 // contains checks if a string contains a substring

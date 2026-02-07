@@ -23,31 +23,33 @@ func NewTransactionRepository(db *sql.DB) *TransactionRepository {
 // Menggunakan database transaction untuk memastikan data consistency
 func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (*models.Transaction, error) {
 	// Begin database transaction
-	// tx.Begin() memulai transaksi database
 	tx, err := r.db.Begin()
 	if err != nil {
 		return nil, err
 	}
 
 	// Defer rollback jika terjadi error
-	// Jika ada panic atau error, transaksi akan di-rollback
 	defer func() {
 		if err != nil {
 			tx.Rollback()
 		}
 	}()
 
-	// Variable untuk menyimpan total amount
+	// Inisialisasi total amount dan slice untuk menyimpan transaction details
 	var totalAmount float64
+	details := make([]models.TransactionDetail, 0)
 
-	// Loop untuk menghitung total amount dan validasi stok
+	// Loop pertama: validasi, hitung total, update stock, dan simpan ke slice
 	for _, item := range req.Items {
-		// Ambil data produk untuk cek harga dan stok
+		// Get product data (harga dan stok)
 		var price float64
 		var stok int
 		err = tx.QueryRow("SELECT harga, stok FROM products WHERE id = $1", item.ProductID).Scan(&price, &stok)
-		if err != nil {
+		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("produk dengan ID %d tidak ditemukan", item.ProductID)
+		}
+		if err != nil {
+			return nil, err
 		}
 
 		// Validasi stok
@@ -58,6 +60,24 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		// Hitung subtotal dan tambahkan ke total amount
 		subtotal := price * float64(item.Quantity)
 		totalAmount += subtotal
+
+		// Update stok produk (kurangi stok)
+		_, err = tx.Exec(
+			"UPDATE products SET stok = stok - $1 WHERE id = $2",
+			item.Quantity,
+			item.ProductID,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Simpan detail ke slice (akan di-insert nanti)
+		details = append(details, models.TransactionDetail{
+			ProductID: item.ProductID,
+			Quantity:  item.Quantity,
+			Price:     price,
+			Subtotal:  subtotal,
+		})
 	}
 
 	// Insert transaction header
@@ -70,44 +90,32 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		return nil, err
 	}
 
-	// Insert transaction details dan update stok produk
-	for _, item := range req.Items {
-		// Ambil harga produk lagi (untuk consistency)
-		var price float64
-		err = tx.QueryRow("SELECT harga FROM products WHERE id = $1", item.ProductID).Scan(&price)
-		if err != nil {
-			return nil, err
+	// Batch insert transaction details (1 query untuk semua items - OPTIMASI!)
+	if len(details) > 0 {
+		// Build query string dengan multiple VALUES
+		query := "INSERT INTO transaction_details (transaction_id, product_id, quantity, price, subtotal) VALUES "
+		values := make([]interface{}, 0, len(details)*5)
+
+		for i, detail := range details {
+			// Tambahkan placeholder untuk setiap row
+			if i > 0 {
+				query += ", "
+			}
+			query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d)",
+				i*5+1, i*5+2, i*5+3, i*5+4, i*5+5)
+
+			// Tambahkan values
+			values = append(values, transactionID, detail.ProductID, detail.Quantity, detail.Price, detail.Subtotal)
 		}
 
-		subtotal := price * float64(item.Quantity)
-
-		// Insert transaction detail
-		// BUG FIX: Loop ini sebelumnya salah menggunakan variable yang sama
-		_, err = tx.Exec(
-			"INSERT INTO transaction_details (transaction_id, product_id, quantity, price, subtotal) VALUES ($1, $2, $3, $4, $5)",
-			transactionID,
-			item.ProductID,
-			item.Quantity,
-			price,
-			subtotal,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		// Update stok produk (kurangi stok)
-		_, err = tx.Exec(
-			"UPDATE products SET stok = stok - $1 WHERE id = $2",
-			item.Quantity,
-			item.ProductID,
-		)
+		// Execute batch insert - 1x query untuk semua items!
+		_, err = tx.Exec(query, values...)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	// Commit transaction
-	// Jika semua berhasil, commit perubahan ke database
 	err = tx.Commit()
 	if err != nil {
 		return nil, err

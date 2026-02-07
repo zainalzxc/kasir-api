@@ -111,23 +111,49 @@ Jalankan secara berurutan:
 
 ---
 
-## 🔧 Environment Variable
+## 🔧 Environment Setup
 
-Collection ini menggunakan variable `{{base_url}}` yang sudah di-set ke `http://localhost:8080`
+Collection ini mendukung **2 environment**:
 
-### **Cara Ganti Base URL:**
+### **1. Production (Railway)** 🚀
+- **URL:** `https://kasir-api-production-zainalzxc.up.railway.app`
+- **File:** `Kasir-API-Production.postman_environment.json`
+- **Use case:** Testing di production server
 
-Jika server kamu jalan di port lain atau di VPS:
+### **2. Local Development** 💻
+- **URL:** `http://localhost:8080`
+- **File:** `Kasir-API-Local.postman_environment.json`
+- **Use case:** Testing saat development
+
+---
+
+### **Cara Import Environment:**
+
+1. **Buka Postman**
+2. **Klik "Import"**
+3. **Import kedua file environment:**
+   - `Kasir-API-Production.postman_environment.json`
+   - `Kasir-API-Local.postman_environment.json`
+4. **Done!** ✅
+
+### **Cara Switch Environment:**
+
+1. **Klik dropdown** di pojok kanan atas (biasanya tertulis "No Environment")
+2. **Pilih environment:**
+   - **"Kasir API - Production"** → untuk test di Railway
+   - **"Kasir API - Local"** → untuk test di localhost
+3. **Done!** Semua request akan otomatis pakai URL yang sesuai
+
+### **Manual Setup (Alternative):**
+
+Jika tidak mau import environment file, bisa set manual:
 
 1. Klik **"Kasir API - Bootcamp Golang"** collection
 2. Pilih tab **"Variables"**
-3. Ganti value `base_url` dari `http://localhost:8080` ke URL kamu
+3. Ganti value `base_url`:
+   - **Production:** `https://kasir-api-production-zainalzxc.up.railway.app`
+   - **Local:** `http://localhost:8080`
 4. Klik **"Save"**
-
-**Contoh:**
-- Local port 3000: `http://localhost:3000`
-- VPS: `http://your-vps-ip:8080`
-- Domain: `https://api.yourdomain.com`
 
 ---
 

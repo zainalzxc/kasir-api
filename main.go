@@ -29,14 +29,23 @@ func main() {
 	// Ini penting untuk tutup koneksi database dengan benar
 	defer db.Close()
 
+	// ==================== INITIALIZE REDIS ====================
+	// Initialize Redis connection untuk caching
+	config.InitRedis()
+	// defer = pastikan Redis connection ditutup saat program selesai
+	defer config.CloseRedis()
+
 	// ==================== DEPENDENCY INJECTION ====================
 	// Dependency Injection = "inject" dependency ke layer yang membutuhkan
 	// Flow: Database -> Repository -> Service -> Handler
 
+	// Cache service (shared across all services)
+	cacheService := services.NewCacheService()
+
 	// Product layers
-	productRepo := repositories.NewProductRepository(db)         // Inject db ke repository
-	productService := services.NewProductService(productRepo)    // Inject repo ke service
-	productHandler := handlers.NewProductHandler(productService) // Inject service ke handler
+	productRepo := repositories.NewProductRepository(db)                    // Inject db ke repository
+	productService := services.NewProductService(productRepo, cacheService) // Inject repo dan cache ke service
+	productHandler := handlers.NewProductHandler(productService)            // Inject service ke handler
 
 	// Category layers
 	categoryRepo := repositories.NewCategoryRepository(db)          // Inject db ke repository

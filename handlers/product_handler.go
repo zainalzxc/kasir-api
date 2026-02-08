@@ -53,27 +53,60 @@ func (h *ProductHandler) HandleProductByID(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// GetAll retrieves all products
+// GetAll retrieves all products with pagination
 // Fungsi ini handle GET /api/produk
 // Support query parameter: ?name=xxx untuk search by name
+// Support pagination: ?page=1&limit=10
 func (h *ProductHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	// Ambil query parameter 'name' dari URL
 	// Contoh: /api/produk?name=te -> searchName = "te"
 	searchName := r.URL.Query().Get("name")
 
-	// Panggil service untuk ambil produk (dengan atau tanpa filter)
-	products, err := h.service.GetAll(searchName)
+	// Parse pagination parameters
+	page := 1
+	limit := 10
+
+	// Parse page parameter
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	// Parse limit parameter
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	// Buat pagination params
+	pagination := models.NewPaginationParams(page, limit)
+
+	// Panggil service untuk ambil produk (dengan filter dan pagination)
+	products, totalCount, err := h.service.GetAll(searchName, &pagination)
 	if err != nil {
 		// Kalau error, kirim HTTP error 500 (Internal Server Error)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Buat response dengan pagination metadata
+	response := models.PaginatedResponse{
+		Data: products,
+		Pagination: models.PaginationMeta{
+			Page:       pagination.Page,
+			Limit:      pagination.Limit,
+			TotalItems: totalCount,
+			TotalPages: models.CalculateTotalPages(totalCount, pagination.Limit),
+		},
+	}
+
 	// Set header Content-Type jadi application/json
 	w.Header().Set("Content-Type", "application/json")
 
-	// Encode products jadi JSON dan kirim ke client
-	json.NewEncoder(w).Encode(products)
+	// Encode response jadi JSON dan kirim ke client
+	json.NewEncoder(w).Encode(response)
 }
 
 // GetByID retrieves a product by ID

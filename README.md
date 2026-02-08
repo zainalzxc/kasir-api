@@ -62,9 +62,51 @@ kasir-api/
 
 ## 🚀 Teknologi
 
-- **Go** 1.21+
-- **GORM** - ORM untuk database
+- **Go** 1.24+
 - **PostgreSQL** - Database (Supabase/Railway)
+- **Redis** - Caching layer (Optional)
+- **lib/pq** - PostgreSQL driver
+- **go-redis** - Redis client
+
+## ✨ Features
+
+- ✅ **Layered Architecture** - Clean separation of concerns
+- ✅ **Redis Caching** - Fast response dengan in-memory cache
+- ✅ **Pagination** - Efficient data handling untuk large datasets
+- ✅ **Search** - Filter products by name
+- ✅ **Transactions** - Checkout dengan multiple items
+- ✅ **Sales Reports** - Daily dan date range reports
+- ✅ **Category Management** - Product categorization dengan JOIN
+
+### 🔴 Redis Caching
+
+API ini menggunakan Redis untuk caching:
+- **Cache Strategy**: Cache-aside pattern
+- **TTL**: 5 menit (configurable)
+- **Invalidation**: Automatic pada POST/PUT/DELETE
+- **Graceful Degradation**: App tetap jalan tanpa Redis
+
+📖 **Panduan lengkap**: [REDIS_PAGINATION_GUIDE.md](./docs/REDIS_PAGINATION_GUIDE.md)
+
+### 📄 Pagination
+
+Semua list endpoints support pagination:
+```
+GET /api/produk?page=1&limit=10
+```
+
+Response format:
+```json
+{
+  "data": [...],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total_items": 45,
+    "total_pages": 5
+  }
+}
+```
 
 ## 📦 Instalasi
 
@@ -122,7 +164,8 @@ Server akan berjalan di `http://localhost:8080`
 - `GET /health` - Cek status API
 
 ### Products
-- `GET /api/produk` - Get all products
+- `GET /api/produk` - Get all products (with pagination)
+  - Query params: `?page=1&limit=10&name=search`
 - `POST /api/produk` - Create new product (auto-update stock if product name exists)
 - `GET /api/produk/{id}` - Get product by ID
 - `PUT /api/produk/{id}` - Update product
@@ -134,6 +177,13 @@ Server akan berjalan di `http://localhost:8080`
 - `GET /api/categories/{id}` - Get category by ID
 - `PUT /api/categories/{id}` - Update category
 - `DELETE /api/categories/{id}` - Delete category
+
+### Transactions
+- `POST /api/checkout` - Create transaction with multiple items
+
+### Reports
+- `GET /api/report/hari-ini` - Get today's sales report
+- `GET /api/report?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD` - Get sales report by date range
 
 ## 📮 Testing dengan Postman
 
@@ -183,28 +233,80 @@ Content-Type: application/json
 GET /api/produk
 ```
 
-## 🚢 Deployment ke Railway
+## 🚢 Deployment ke Production
 
-### 1. Push ke GitHub
+### **Opsi 1: Railway (Recommended) ⭐**
+
+Railway menyediakan PostgreSQL **DAN** Redis dalam satu platform!
+
+#### **1. Push ke GitHub**
 ```bash
 git add .
-git commit -m "Refactor to layered architecture"
+git commit -m "feat: add Redis caching and pagination"
 git push origin main
 ```
 
-### 2. Deploy di Railway
+#### **2. Deploy di Railway**
 1. Login ke https://railway.app
 2. New Project → Deploy from GitHub
 3. Pilih repository `kasir-api`
 4. Railway akan auto-detect Go project
 
-### 3. Set Environment Variables
-Di Railway dashboard:
-- Klik project → Variables
-- Add variable: `DATABASE_URL` (dari Railway PostgreSQL atau Supabase)
+#### **3. Add PostgreSQL**
+- Click "New" → "Database" → "Add PostgreSQL"
+- `DATABASE_URL` otomatis di-set ✅
 
-### 4. Deploy
+#### **4. Add Redis** 🔴
+- Click "New" → "Database" → "Add Redis"
+- `REDIS_URL` otomatis di-set ✅
+
+#### **5. Deploy!**
 Railway akan otomatis build dan deploy!
+
+Check logs untuk:
+```
+✅ Database connected successfully
+✅ Redis connected successfully!
+🚀 Server running on port: XXXX
+```
+
+---
+
+### **Opsi 2: Supabase + Upstash Redis (FREE)**
+
+Jika sudah menggunakan Supabase untuk PostgreSQL:
+
+#### **1. Setup Upstash Redis (FREE)**
+1. Buka https://upstash.com
+2. Create account (free, no credit card)
+3. Create Redis database
+4. Copy Redis URL
+
+📖 **Panduan lengkap**: [UPSTASH_REDIS_SETUP.md](./docs/UPSTASH_REDIS_SETUP.md)
+
+#### **2. Set Environment Variables**
+Di Railway/Vercel/Render:
+```bash
+DATABASE_URL=postgresql://...supabase...
+REDIS_URL=redis://default:xxx@xxx.upstash.io:6379
+```
+
+#### **3. Deploy**
+Push ke GitHub dan deploy seperti biasa!
+
+---
+
+### **Tanpa Redis (Tetap Berfungsi)**
+
+App akan tetap berjalan normal tanpa Redis:
+- ✅ Semua fitur tetap bekerja
+- ✅ Data langsung dari database
+- ⚠️ Sedikit lebih lambat (no caching)
+
+Log akan menampilkan:
+```
+Warning: Gagal connect ke Redis, Redis caching akan dinonaktifkan
+```
 
 ## 🔧 Development
 

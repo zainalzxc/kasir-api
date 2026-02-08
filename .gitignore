@@ -32,3 +32,10 @@ go.work
 # OS
 .DS_Store
 Thumbs.db
+
+# Testing scripts (local only)
+*.ps1
+*.sh
+
+# Executables
+kasir-api.exe

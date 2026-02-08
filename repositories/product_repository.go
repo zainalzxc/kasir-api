@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"     // Package standard Go untuk database SQL
+	"fmt"              // Package untuk formatting string
 	"kasir-api/models" // Import models untuk struct Product
 )
 
@@ -17,10 +18,12 @@ func NewProductRepository(db *sql.DB) *ProductRepository {
 	return &ProductRepository{db: db} // Return struct dengan db yang sudah di-inject
 }
 
-// GetAll retrieves all products from database
-// Fungsi ini mengambil semua produk dari table products
+// GetAll retrieves all products from database with pagination
+// Fungsi ini mengambil produk dari table products dengan pagination
 // Parameter searchName untuk filter by name (kosong = ambil semua)
-func (r *ProductRepository) GetAll(searchName string) ([]models.Product, error) {
+// Parameter pagination untuk limit dan offset
+// Return: products, total count, error
+func (r *ProductRepository) GetAll(searchName string, pagination *models.PaginationParams) ([]models.Product, int, error) {
 	// SQL query dengan LEFT JOIN ke table categories
 	// LEFT JOIN = ambil semua products, meskipun tidak punya category
 	query := `
@@ -37,21 +40,47 @@ func (r *ProductRepository) GetAll(searchName string) ([]models.Product, error) 
 		LEFT JOIN categories c ON p.category_id = c.id
 	`
 
+	// Query untuk count total items
+	countQuery := `SELECT COUNT(*) FROM products p`
+
 	// Buat slice untuk menampung arguments query
 	var args []interface{}
+	paramIndex := 1
 
 	// Jika searchName tidak kosong, tambahkan WHERE clause untuk filter
 	if searchName != "" {
-		query += " WHERE p.nama ILIKE $1"
+		query += " WHERE p.nama ILIKE $" + fmt.Sprint(paramIndex)
+		countQuery += " WHERE p.nama ILIKE $1"
 		// ILIKE = case-insensitive LIKE
 		// % hanya di akhir = search yang dimulai dengan searchName (prefix match)
 		args = append(args, searchName+"%")
+		paramIndex++
+	}
+
+	// Hitung total items untuk pagination metadata
+	var totalItems int
+	countArgs := args
+	if len(countArgs) == 0 {
+		countArgs = nil
+	}
+	err := r.db.QueryRow(countQuery, countArgs...).Scan(&totalItems)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Tambahkan ORDER BY untuk konsistensi
+	query += " ORDER BY p.id DESC"
+
+	// Tambahkan LIMIT dan OFFSET untuk pagination
+	if pagination != nil {
+		query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", paramIndex, paramIndex+1)
+		args = append(args, pagination.Limit, pagination.GetOffset())
 	}
 
 	// Execute query dan dapatkan rows (banyak baris)
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
-		return nil, err // Kalau error, return nil dan error
+		return nil, 0, err // Kalau error, return nil dan error
 	}
 	defer rows.Close() // Pastikan rows di-close setelah selesai (penting!)
 
@@ -78,7 +107,7 @@ func (r *ProductRepository) GetAll(searchName string) ([]models.Product, error) 
 			&categoryDesc,
 		)
 		if err != nil {
-			return nil, err // Kalau scan error, return error
+			return nil, 0, err // Kalau scan error, return error
 		}
 
 		// Jika ada category, populate Category struct dengan semua field
@@ -94,7 +123,7 @@ func (r *ProductRepository) GetAll(searchName string) ([]models.Product, error) 
 		products = append(products, product)
 	}
 
-	return products, nil // Return slice products dan nil (no error)
+	return products, totalItems, nil // Return slice products, total count, dan nil (no error)
 }
 
 // GetByID retrieves a product by ID

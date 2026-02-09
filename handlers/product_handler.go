@@ -4,9 +4,10 @@ import (
 	"encoding/json"      // Package untuk encode/decode JSON
 	"kasir-api/models"   // Import models untuk struct Product
 	"kasir-api/services" // Import services untuk business logic
-	"net/http"           // Package untuk HTTP server
-	"strconv"            // Package untuk convert string ke int
-	"strings"            // Package untuk manipulasi string
+	"log"
+	"net/http" // Package untuk HTTP server
+	"strconv"  // Package untuk convert string ke int
+	"strings"  // Package untuk manipulasi string
 )
 
 // ProductHandler handles HTTP requests for products
@@ -86,6 +87,8 @@ func (h *ProductHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	// Panggil service untuk ambil produk (dengan filter dan pagination)
 	products, totalCount, err := h.service.GetAll(searchName, &pagination)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("❌ Handler: Error getting products: %v", err)
 		// Kalau error, kirim HTTP error 500 (Internal Server Error)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -119,6 +122,8 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	// Convert string "5" jadi integer 5
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("⚠️ Handler: Invalid product ID: %s", idStr)
 		// Kalau gagal convert (misal: /api/produk/abc), return error 400 (Bad Request)
 		http.Error(w, "Invalid Product ID", http.StatusBadRequest)
 		return
@@ -127,6 +132,8 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	// Panggil service untuk ambil produk by ID
 	product, err := h.service.GetByID(id)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("❌ Handler: Error getting product ID %d: %v", id, err)
 		// Kalau tidak ketemu, return error 404 (Not Found)
 		http.Error(w, "Produk tidak ditemukan", http.StatusNotFound)
 		return
@@ -147,6 +154,8 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Decode JSON dari request body ke struct product
 	err := json.NewDecoder(r.Body).Decode(&product)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("⚠️ Handler: Invalid request body for create product: %v", err)
 		// Kalau JSON invalid, return error 400 (Bad Request)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -155,8 +164,13 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Panggil service untuk create produk baru
 	err = h.service.Create(&product)
 	if err != nil {
-		// Kalau error saat create, return error 500
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Log sudah dilakukan di service layer
+		// Kalau error validasi, return 400, kalau error lain return 500
+		if strings.Contains(err.Error(), "tidak boleh") || strings.Contains(err.Error(), "harus") || strings.Contains(err.Error(), "minimal") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -179,6 +193,8 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// Convert string ke integer
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("⚠️ Handler: Invalid product ID for update: %s", idStr)
 		// Kalau invalid ID, return error 400
 		http.Error(w, "Invalid Product ID", http.StatusBadRequest)
 		return
@@ -189,6 +205,8 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// Decode JSON dari request body
 	err = json.NewDecoder(r.Body).Decode(&product)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("⚠️ Handler: Invalid request body for update product ID %d: %v", id, err)
 		// Kalau JSON invalid, return error 400
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -197,8 +215,13 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// Panggil service untuk update produk
 	err = h.service.Update(id, &product)
 	if err != nil {
-		// Kalau error saat update, return error 500
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Log sudah dilakukan di service layer
+		// Kalau error validasi, return 400, kalau error lain return 500
+		if strings.Contains(err.Error(), "tidak boleh") || strings.Contains(err.Error(), "harus") || strings.Contains(err.Error(), "minimal") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -218,6 +241,8 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	// Convert string ke integer
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("⚠️ Handler: Invalid product ID for delete: %s", idStr)
 		// Kalau invalid ID, return error 400
 		http.Error(w, "Invalid Product ID", http.StatusBadRequest)
 		return
@@ -226,6 +251,7 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	// Panggil service untuk delete produk
 	err = h.service.Delete(id)
 	if err != nil {
+		// Log sudah dilakukan di service layer
 		// Kalau error saat delete, return error 500
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

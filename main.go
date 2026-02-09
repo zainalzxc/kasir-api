@@ -48,9 +48,9 @@ func main() {
 	productHandler := handlers.NewProductHandler(productService)            // Inject service ke handler
 
 	// Category layers
-	categoryRepo := repositories.NewCategoryRepository(db)          // Inject db ke repository
-	categoryService := services.NewCategoryService(categoryRepo)    // Inject repo ke service
-	categoryHandler := handlers.NewCategoryHandler(categoryService) // Inject service ke handler
+	categoryRepo := repositories.NewCategoryRepository(db)                     // Inject db ke repository
+	categoryService := services.NewCategoryService(categoryRepo, cacheService) // Inject repo dan cache ke service
+	categoryHandler := handlers.NewCategoryHandler(categoryService)            // Inject service ke handler
 
 	// Transaction layers
 	transactionRepo := repositories.NewTransactionRepository(db)             // Inject db ke repository

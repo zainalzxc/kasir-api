@@ -4,9 +4,10 @@ import (
 	"encoding/json"      // Package untuk encode/decode JSON
 	"kasir-api/models"   // Import models untuk struct Category
 	"kasir-api/services" // Import services untuk business logic
-	"net/http"           // Package untuk HTTP server
-	"strconv"            // Package untuk convert string ke int
-	"strings"            // Package untuk manipulasi string
+	"log"
+	"net/http" // Package untuk HTTP server
+	"strconv"  // Package untuk convert string ke int
+	"strings"  // Package untuk manipulasi string
 )
 
 // CategoryHandler handles HTTP requests for categories
@@ -59,6 +60,8 @@ func (h *CategoryHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	// Panggil service untuk ambil semua kategori
 	categories, err := h.service.GetAll()
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("❌ Handler: Error getting categories: %v", err)
 		// Kalau error, kirim HTTP error 500 (Internal Server Error)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -81,6 +84,8 @@ func (h *CategoryHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	// Convert string "2" jadi integer 2
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("⚠️ Handler: Invalid category ID: %s", idStr)
 		// Kalau gagal convert, return error 400 (Bad Request)
 		http.Error(w, "Invalid Category ID", http.StatusBadRequest)
 		return
@@ -89,6 +94,8 @@ func (h *CategoryHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	// Panggil service untuk ambil kategori by ID
 	category, err := h.service.GetByID(id)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("❌ Handler: Error getting category ID %d: %v", id, err)
 		// Kalau tidak ketemu, return error 404 (Not Found)
 		http.Error(w, "Category tidak ditemukan", http.StatusNotFound)
 		return
@@ -109,6 +116,8 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Decode JSON dari request body ke struct category
 	err := json.NewDecoder(r.Body).Decode(&category)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("⚠️ Handler: Invalid request body for create category: %v", err)
 		// Kalau JSON invalid, return error 400 (Bad Request)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -117,8 +126,13 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Panggil service untuk create kategori baru
 	err = h.service.Create(&category)
 	if err != nil {
-		// Kalau error saat create, return error 500
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Log sudah dilakukan di service layer
+		// Kalau error validasi, return 400, kalau error lain return 500
+		if strings.Contains(err.Error(), "tidak boleh") || strings.Contains(err.Error(), "minimal") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -141,6 +155,8 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// Convert string ke integer
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("⚠️ Handler: Invalid category ID for update: %s", idStr)
 		// Kalau invalid ID, return error 400
 		http.Error(w, "Invalid Category ID", http.StatusBadRequest)
 		return
@@ -151,6 +167,8 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// Decode JSON dari request body
 	err = json.NewDecoder(r.Body).Decode(&category)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("⚠️ Handler: Invalid request body for update category ID %d: %v", id, err)
 		// Kalau JSON invalid, return error 400
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -159,8 +177,13 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// Panggil service untuk update kategori
 	err = h.service.Update(id, &category)
 	if err != nil {
-		// Kalau error saat update, return error 500
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Log sudah dilakukan di service layer
+		// Kalau error validasi, return 400, kalau error lain return 500
+		if strings.Contains(err.Error(), "tidak boleh") || strings.Contains(err.Error(), "minimal") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -180,6 +203,8 @@ func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	// Convert string ke integer
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		// Log error untuk debugging
+		log.Printf("⚠️ Handler: Invalid category ID for delete: %s", idStr)
 		// Kalau invalid ID, return error 400
 		http.Error(w, "Invalid Category ID", http.StatusBadRequest)
 		return
@@ -188,6 +213,7 @@ func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	// Panggil service untuk delete kategori
 	err = h.service.Delete(id)
 	if err != nil {
+		// Log sudah dilakukan di service layer
 		// Kalau error saat delete, return error 500
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -4,7 +4,7 @@ package models
 type Category struct {
 	ID          int       `json:"id" gorm:"primaryKey"`
 	Nama        string    `json:"nama"`
-	Description string    `json:"deskription"`
+	Description string    `json:"description"`
 	Products    []Product `json:"products,omitempty"` // List products dalam category ini (untuk GET by ID)
 }
 

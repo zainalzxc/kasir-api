@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"strings" // Package untuk manipulasi string
 
 	"github.com/spf13/viper"
 )
@@ -62,7 +63,8 @@ func (c *Config) GetDatabaseURL() string {
 		connStr := c.DBConn
 
 		// Jika sudah ada default_query_exec_mode, skip
-		if contains(connStr, "default_query_exec_mode") {
+		// Menggunakan strings.Contains() dari standard library
+		if strings.Contains(connStr, "default_query_exec_mode") {
 			log.Println("✅ Connection string already has default_query_exec_mode parameter")
 			return connStr
 		}
@@ -71,7 +73,7 @@ func (c *Config) GetDatabaseURL() string {
 		// Ini fix error "prepared statement already exists" yang sering muncul
 		// dengan PostgreSQL connection pooler (Railway/Supabase/PgBouncer)
 		separator := "?"
-		if contains(connStr, "?") {
+		if strings.Contains(connStr, "?") {
 			// Sudah ada query parameters, tambahkan dengan &
 			separator = "&"
 		}
@@ -83,14 +85,4 @@ func (c *Config) GetDatabaseURL() string {
 	}
 	// Default local PostgreSQL connection
 	return "host=localhost user=postgres password=postgres dbname=kasir_db port=5432 sslmode=disable default_query_exec_mode=simple_protocol"
-}
-
-// contains checks if a string contains a substring
-func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

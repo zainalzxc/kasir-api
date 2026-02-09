@@ -1,9 +1,12 @@
 package services
 
 import (
+	"errors"
 	"fmt"
 	"kasir-api/models"       // Import models untuk struct Product
 	"kasir-api/repositories" // Import repositories untuk akses database
+	"log"
+	"strings"
 )
 
 // ProductService handles business logic for products
@@ -21,6 +24,32 @@ func NewProductService(repo *repositories.ProductRepository, cache *CacheService
 		repo:  repo,
 		cache: cache,
 	}
+}
+
+// validateProduct melakukan validasi data produk
+// Fungsi ini akan dipanggil sebelum Create dan Update
+func (s *ProductService) validateProduct(product *models.Product) error {
+	// Validasi nama tidak boleh kosong
+	if strings.TrimSpace(product.Nama) == "" {
+		return errors.New("nama produk tidak boleh kosong")
+	}
+
+	// Validasi nama minimal 2 karakter
+	if len(strings.TrimSpace(product.Nama)) < 2 {
+		return errors.New("nama produk minimal 2 karakter")
+	}
+
+	// Validasi harga harus lebih dari 0
+	if product.Harga <= 0 {
+		return errors.New("harga harus lebih dari 0")
+	}
+
+	// Validasi stok tidak boleh negatif
+	if product.Stok < 0 {
+		return errors.New("stok tidak boleh negatif")
+	}
+
+	return nil
 }
 
 // GetAll retrieves all products with caching and pagination
@@ -51,6 +80,7 @@ func (s *ProductService) GetAll(searchName string, pagination *models.Pagination
 	// Cache MISS - ambil dari database
 	products, totalCount, err := s.repo.GetAll(searchName, pagination)
 	if err != nil {
+		log.Printf("❌ Error getting products from database: %v", err)
 		return nil, 0, err
 	}
 
@@ -80,6 +110,7 @@ func (s *ProductService) GetByID(id int) (*models.Product, error) {
 	// Cache MISS - ambil dari database
 	productPtr, err := s.repo.GetByID(id)
 	if err != nil {
+		log.Printf("❌ Error getting product by ID %d: %v", id, err)
 		return nil, err
 	}
 
@@ -92,22 +123,23 @@ func (s *ProductService) GetByID(id int) (*models.Product, error) {
 // Create adds a new product and invalidates cache
 // Fungsi ini memanggil repository untuk tambah produk baru
 func (s *ProductService) Create(product *models.Product) error {
-	// Di sini bisa tambahkan validasi business logic:
-	// - Cek apakah harga > 0
-	// - Cek apakah stok >= 0
-	// - Cek apakah nama tidak kosong
-	// - dll
+	// Validasi input
+	if err := s.validateProduct(product); err != nil {
+		log.Printf("⚠️ Validation error on create product: %v", err)
+		return err
+	}
 
-	// Contoh validasi sederhana (opsional):
-	// if product.Harga <= 0 {
-	//     return errors.New("harga harus lebih dari 0")
-	// }
+	// Trim whitespace dari nama
+	product.Nama = strings.TrimSpace(product.Nama)
 
 	// Panggil repository untuk save ke database
 	err := s.repo.Create(product)
 	if err != nil {
+		log.Printf("❌ Error creating product: %v", err)
 		return err
 	}
+
+	log.Printf("✅ Product created successfully: ID=%d, Name=%s", product.ID, product.Nama)
 
 	// Invalidate semua cache products list karena ada data baru
 	s.cache.DeletePattern("products:list:*")
@@ -121,13 +153,23 @@ func (s *ProductService) Update(id int, product *models.Product) error {
 	// Set ID untuk memastikan update produk yang benar
 	product.ID = id
 
-	// Di sini bisa tambah validasi seperti di Create
+	// Validasi input
+	if err := s.validateProduct(product); err != nil {
+		log.Printf("⚠️ Validation error on update product ID %d: %v", id, err)
+		return err
+	}
+
+	// Trim whitespace dari nama
+	product.Nama = strings.TrimSpace(product.Nama)
 
 	// Panggil repository untuk update di database
 	err := s.repo.Update(product)
 	if err != nil {
+		log.Printf("❌ Error updating product ID %d: %v", id, err)
 		return err
 	}
+
+	log.Printf("✅ Product updated successfully: ID=%d, Name=%s", id, product.Nama)
 
 	// Invalidate cache untuk produk ini dan semua list
 	s.cache.Delete(s.cache.GenerateKey("products", "detail", fmt.Sprintf("id:%d", id)))
@@ -139,17 +181,14 @@ func (s *ProductService) Update(id int, product *models.Product) error {
 // Delete removes a product and invalidates cache
 // Fungsi ini memanggil repository untuk hapus produk
 func (s *ProductService) Delete(id int) error {
-	// Di sini bisa tambah logic seperti:
-	// - Cek apakah produk sedang dipakai di transaksi
-	// - Soft delete (update status jadi "deleted" instead of hapus permanent)
-	// - Logging
-	// - dll
-
 	// Panggil repository untuk delete dari database
 	err := s.repo.Delete(id)
 	if err != nil {
+		log.Printf("❌ Error deleting product ID %d: %v", id, err)
 		return err
 	}
+
+	log.Printf("✅ Product deleted successfully: ID=%d", id)
 
 	// Invalidate cache untuk produk ini dan semua list
 	s.cache.Delete(s.cache.GenerateKey("products", "detail", fmt.Sprintf("id:%d", id)))

@@ -2,42 +2,39 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run generate-password.go <password>")
-		fmt.Println("Example: go run generate-password.go admin123")
-		return
-	}
+	// Password yang ingin kita hash untuk KASIR
+	password := "kasir123"
+	username := "kasir1"
+	role := "kasir"
+	fullname := "Kasir Utama"
 
-	password := os.Args[1]
-
-	// Generate hash
+	// Generate hash dari password
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		fmt.Println("Error generating hash:", err)
 		return
 	}
 
-	fmt.Println("========================================")
-	fmt.Println("Password Hash Generator")
-	fmt.Println("========================================")
-	fmt.Println("Password:", password)
-	fmt.Println("Hash:", string(hash))
-	fmt.Println("")
-	fmt.Println("SQL Update Command:")
-	fmt.Printf("UPDATE users SET password = '%s' WHERE username = 'admin';\n", string(hash))
-	fmt.Println("========================================")
+	hashString := string(hash)
 
-	// Verify hash
-	err = bcrypt.CompareHashAndPassword(hash, []byte(password))
-	if err == nil {
-		fmt.Println("✅ Hash verification: SUCCESS")
-	} else {
-		fmt.Println("❌ Hash verification: FAILED")
-	}
+	fmt.Println("========================================")
+	fmt.Println("🔑 PASSWORD HASH GENERATOR (KASIR)")
+	fmt.Println("========================================")
+	fmt.Println("Username          :", username)
+	fmt.Println("Password Original :", password)
+	fmt.Println("Bcrypt Hash       :", hashString)
+	fmt.Println("========================================")
+	fmt.Println("📋 SQL QUERY UNTUK SUPABASE:")
+	fmt.Println()
+	fmt.Printf("-- 1. Reset password user '%s' menjadi '%s'\n", username, password)
+	fmt.Printf("UPDATE users SET password = '%s' WHERE username = '%s';\n", hashString, username)
+	fmt.Println()
+	fmt.Println("-- 2. ATAU buat user baru jika belum ada:")
+	fmt.Printf("INSERT INTO users (username, password, nama_lengkap, role) VALUES ('%s', '%s', '%s', '%s') ON CONFLICT (username) DO NOTHING;\n", username, hashString, fullname, role)
+	fmt.Println("========================================")
 }

@@ -219,3 +219,45 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 
 	return transaction, nil
 }
+
+// GetAll retrieves all transactions ordered by date descending
+// Fungsi ini mengambil semua data transaksi untuk history
+func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
+	// Query untuk mengambil semua transaksi diurutkan dari yang terbaru
+	query := `
+		SELECT id, total_amount, discount_id, discount_amount, created_at 
+		FROM transactions 
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var transactions []models.Transaction
+
+	for rows.Next() {
+		var t models.Transaction
+		// Scan data ke struct
+		// Note: discount_id bisa NULL, jadi perlu handle sql.NullInt64 atau pointer *int
+		// Di struct Transaction, DiscountID dalah *int, jadi driver sql/pgx biasanya bisa handle
+		// Tapi aman-nya kita pakai sql.NullInt64 dulu untuk scan
+		var discountID sql.NullInt64
+
+		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+
+		if discountID.Valid {
+			id := int(discountID.Int64)
+			t.DiscountID = &id
+		}
+
+		transactions = append(transactions, t)
+	}
+
+	return transactions, nil
+}

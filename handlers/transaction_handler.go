@@ -53,3 +53,31 @@ func (h *TransactionHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 	// Encode transaction dan kirim ke client
 	json.NewEncoder(w).Encode(transaction)
 }
+
+// HandleTransactions handles GET /api/transactions
+// Fungsi ini handle request untuk menampilkan history transaksi
+func (h *TransactionHandler) HandleTransactions(w http.ResponseWriter, r *http.Request) {
+	// Hanya terima GET method
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Panggil service untuk ambil semua data
+	transactions, err := h.service.GetAll()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Filter jika kosong, return array kosong []
+	if transactions == nil {
+		transactions = []models.Transaction{}
+	}
+
+	// Set header Content-Type jadi application/json
+	w.Header().Set("Content-Type", "application/json")
+
+	// Encode transactions dan kirim ke client
+	json.NewEncoder(w).Encode(transactions)
+}

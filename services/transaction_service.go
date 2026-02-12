@@ -39,3 +39,9 @@ func (s *TransactionService) Checkout(req *models.CheckoutRequest) (*models.Tran
 	// Panggil repository untuk create transaction
 	return s.repo.CreateTransaction(req)
 }
+
+// GetAll returns all transactions for history
+// Fungsi ini memanggil repository untuk mengambil semua transaksi
+func (s *TransactionService) GetAll() ([]models.Transaction, error) {
+	return s.repo.GetAll()
+}

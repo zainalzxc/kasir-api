@@ -1,7 +1,8 @@
 package handlers
 
 import (
-	"encoding/json"      // Package untuk encode/decode JSON
+	"encoding/json" // Package untuk encode/decode JSON
+	"kasir-api/middleware"
 	"kasir-api/models"   // Import models untuk struct Product
 	"kasir-api/services" // Import services untuk business logic
 	"log"
@@ -94,6 +95,25 @@ func (h *ProductHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Filter sensitive data based on role
+	// Ambil user dari context
+	user := middleware.GetUserFromContext(r.Context())
+
+	// Jika user BUKAN admin, sembunyikan harga_beli dan margin
+	// Note: Jika user nil (public access), juga sembunyikan
+	if user == nil || !user.IsAdmin() {
+		for i := range products {
+			products[i].HargaBeli = nil
+			products[i].Margin = nil
+			products[i].CreatedBy = nil
+		}
+	} else {
+		// Jika Admin, hitung margin untuk setiap produk
+		for i := range products {
+			products[i].Margin = products[i].CalculateMargin()
+		}
+	}
+
 	// Buat response dengan pagination metadata
 	response := models.PaginatedResponse{
 		Data: products,
@@ -139,6 +159,19 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Filter sensitive data based on role
+	user := middleware.GetUserFromContext(r.Context())
+
+	// Jika user BUKAN admin, sembunyikan harga_beli dan margin
+	if user == nil || !user.IsAdmin() {
+		product.HargaBeli = nil
+		product.Margin = nil
+		product.CreatedBy = nil
+	} else {
+		// Jika Admin, hitung margin
+		product.Margin = product.CalculateMargin()
+	}
+
 	// Set header Content-Type jadi application/json
 	w.Header().Set("Content-Type", "application/json")
 
@@ -149,6 +182,13 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 // Create adds a new product
 // Fungsi ini handle POST /api/produk
 func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
+	// Check authorization
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsAdmin() {
+		http.Error(w, "Forbidden: Only Admin can create products", http.StatusForbidden)
+		return
+	}
+
 	var product models.Product // Buat variable untuk menampung data dari request
 
 	// Decode JSON dari request body ke struct product
@@ -160,6 +200,10 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+
+	// Set created_by from user
+	userID := user.ID
+	product.CreatedBy = &userID
 
 	// Panggil service untuk create produk baru
 	err = h.service.Create(&product)
@@ -187,6 +231,13 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Update updates an existing product
 // Fungsi ini handle PUT /api/produk/{id}
 func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
+	// Check authorization
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsAdmin() {
+		http.Error(w, "Forbidden: Only Admin can update products", http.StatusForbidden)
+		return
+	}
+
 	// Extract ID dari URL
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/produk/")
 
@@ -235,6 +286,13 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 // Delete removes a product
 // Fungsi ini handle DELETE /api/produk/{id}
 func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	// Check authorization
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsAdmin() {
+		http.Error(w, "Forbidden: Only Admin can delete products", http.StatusForbidden)
+		return
+	}
+
 	// Extract ID dari URL
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/produk/")
 

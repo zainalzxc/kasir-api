@@ -96,3 +96,137 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 
 	return &report, nil
 }
+
+// GetSalesTrend retrieves sales trend data for chart
+// Fungsi untuk mengambil data grafik penjualan
+// interval: 'day', 'month', 'year'
+func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval string) ([]models.SalesTrend, error) {
+	var trends []models.SalesTrend
+
+	// Tentukan format tanggal output berdasarkan interval
+	// PostgreSQL format strings
+	var dateFormat string
+	var truncateUnit string
+
+	switch interval {
+	case "day":
+		truncateUnit = "day"
+		dateFormat = "YYYY-MM-DD"
+	case "month":
+		truncateUnit = "month"
+		dateFormat = "YYYY-MM"
+	case "year":
+		truncateUnit = "year"
+		dateFormat = "YYYY"
+	default:
+		truncateUnit = "day"
+		dateFormat = "YYYY-MM-DD"
+	}
+
+	// Query Aggregation Complex
+	// 1. Group by DATE_TRUNC(unit, created_at)
+	// 2. Sum total_amount -> TotalSales
+	// 3. Sum (subtotal - (harga_beli * quantity)) -> TotalProfit
+	// 4. Count distinct transactions -> TransactionCount
+	query := `
+		SELECT 
+			TO_CHAR(DATE_TRUNC($1, t.created_at), $2) as period,
+			COALESCE(SUM(t.total_amount), 0) as total_sales,
+			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, 0) * td.quantity)), 0) as total_profit,
+			COUNT(DISTINCT t.id) as transaction_count
+		FROM transactions t
+		LEFT JOIN transaction_details td ON t.id = td.transaction_id
+		WHERE t.created_at BETWEEN $3 AND $4
+		GROUP BY 1
+		ORDER BY 1 ASC
+	`
+
+	rows, err := r.db.Query(query, truncateUnit, dateFormat, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var t models.SalesTrend
+		// Scan hasil query ke struct
+		// Note: total_sales & total_profit mungkin float/decimal
+		err := rows.Scan(&t.Date, &t.TotalSales, &t.TotalProfit, &t.TransactionCount)
+		if err != nil {
+			return nil, err
+		}
+		trends = append(trends, t)
+	}
+
+	return trends, nil
+}
+
+// GetTopProducts returns top selling products by quantity and by profit
+// Fungsi untuk mengambil produk terlaris (by Qty) dan paling untung (by Profit)
+func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit int) ([]models.TopProduct, []models.TopProduct, error) {
+	// 1. Top by Quantity
+	// Query untuk top qty
+	queryQty := `
+		SELECT 
+			p.nama,
+			COALESCE(SUM(td.quantity), 0) as jumlah,
+			COALESCE(SUM(td.subtotal), 0) as total_sales,
+			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, 0) * td.quantity)), 0) as total_profit
+		FROM transaction_details td
+		JOIN products p ON td.product_id = p.id
+		JOIN transactions t ON td.transaction_id = t.id
+		WHERE t.created_at BETWEEN $1 AND $2
+		GROUP BY p.id, p.nama
+		ORDER BY jumlah DESC
+		LIMIT $3
+	`
+
+	rowsQty, err := r.db.Query(queryQty, startDate, endDate, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rowsQty.Close()
+
+	var topQty []models.TopProduct
+	for rowsQty.Next() {
+		var p models.TopProduct
+		if err := rowsQty.Scan(&p.NamaProduk, &p.Jumlah, &p.TotalSales, &p.TotalProfit); err != nil {
+			return nil, nil, err
+		}
+		topQty = append(topQty, p)
+	}
+
+	// 2. Top by Profit
+	// Query untuk top profit
+	queryProfit := `
+		SELECT 
+			p.nama,
+			COALESCE(SUM(td.quantity), 0) as jumlah,
+			COALESCE(SUM(td.subtotal), 0) as total_sales,
+			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, 0) * td.quantity)), 0) as total_profit
+		FROM transaction_details td
+		JOIN products p ON td.product_id = p.id
+		JOIN transactions t ON td.transaction_id = t.id
+		WHERE t.created_at BETWEEN $1 AND $2
+		GROUP BY p.id, p.nama
+		ORDER BY total_profit DESC
+		LIMIT $3
+	`
+
+	rowsProfit, err := r.db.Query(queryProfit, startDate, endDate, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rowsProfit.Close()
+
+	var topProfit []models.TopProduct
+	for rowsProfit.Next() {
+		var p models.TopProduct
+		if err := rowsProfit.Scan(&p.NamaProduk, &p.Jumlah, &p.TotalSales, &p.TotalProfit); err != nil {
+			return nil, nil, err
+		}
+		topProfit = append(topProfit, p)
+	}
+
+	return topQty, topProfit, nil
+}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"kasir-api/services"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -87,4 +88,72 @@ func (h *ReportHandler) GetSalesReportByDateRange(w http.ResponseWriter, r *http
 
 	// Encode report dan kirim ke client
 	json.NewEncoder(w).Encode(report)
+}
+
+// GetSalesTrend handles GET /api/dashboard/sales-trend?period=day|month|year
+// Fungsi ini handle request untuk grafik trend penjualan
+func (h *ReportHandler) GetSalesTrend(w http.ResponseWriter, r *http.Request) {
+	// Hanya terima GET method
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Ambil query parameter 'period'
+	// Options: day (default), month, year
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "day"
+	}
+
+	// Panggil service
+	trends, err := h.service.GetSalesTrend(period)
+	if err != nil {
+		// Log error jika perlu
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Set header Content-Type jadi application/json
+	w.Header().Set("Content-Type", "application/json")
+
+	// Encode result ke JSON
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"period": period,
+		"data":   trends,
+	})
+}
+
+// GetTopProducts handles GET /api/dashboard/top-products?limit=5
+// Fungsi ini handle request untuk produk terlaris
+func (h *ReportHandler) GetTopProducts(w http.ResponseWriter, r *http.Request) {
+	// Hanya terima GET method
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse limit (default 5)
+	limit := 5
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	// Panggil service
+	topQty, topProfit, err := h.service.GetTopProducts(limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Set header Content-Type jadi application/json
+	w.Header().Set("Content-Type", "application/json")
+
+	// Encode result ke JSON
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"by_quantity": topQty,
+		"by_profit":   topProfit,
+	})
 }

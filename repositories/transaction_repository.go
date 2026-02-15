@@ -39,10 +39,11 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 	for _, item := range req.Items {
 		var price float64
 		var stok int
-		var categoryID sql.NullInt64 // Bisa NULL
+		var categoryID sql.NullInt64  // Bisa NULL
+		var hargaBeli sql.NullFloat64 // Harga beli/modal (bisa NULL)
 
-		// Fetch product details including category_id
-		err = tx.QueryRow("SELECT harga, stok, category_id FROM products WHERE id = $1", item.ProductID).Scan(&price, &stok, &categoryID)
+		// Fetch product details including category_id dan harga_beli
+		err = tx.QueryRow("SELECT harga, stok, category_id, harga_beli FROM products WHERE id = $1", item.ProductID).Scan(&price, &stok, &categoryID, &hargaBeli)
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("produk dengan ID %d tidak ditemukan", item.ProductID)
 		}
@@ -111,13 +112,23 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 			return nil, err
 		}
 
+		// Tentukan harga beli untuk snapshot di transaction_details
+		// Jika harga_beli NULL, gunakan harga jual sebagai fallback (profit = 0)
+		var hargaBeliSnapshot float64
+		if hargaBeli.Valid {
+			hargaBeliSnapshot = hargaBeli.Float64
+		} else {
+			hargaBeliSnapshot = price // fallback: anggap modal = harga jual
+		}
+
 		// Add to details
-		// Note: Subtotal is NET. Price is GROSS.
+		// Note: Subtotal is NET. Price is GROSS. HargaBeli is snapshot modal.
 		details = append(details, models.TransactionDetail{
 			ProductID: item.ProductID,
 			Quantity:  item.Quantity,
-			Price:     price,    // Store Original Price
-			Subtotal:  subtotal, // Store Net Subtotal
+			Price:     price,             // Store Original Price
+			Subtotal:  subtotal,          // Store Net Subtotal
+			HargaBeli: hargaBeliSnapshot, // Store harga beli snapshot untuk profit analysis
 		})
 	}
 
@@ -182,18 +193,18 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		return nil, err
 	}
 
-	// 4. Batch Insert Details
+	// 4. Batch Insert Details (including harga_beli snapshot)
 	if len(details) > 0 {
-		query := "INSERT INTO transaction_details (transaction_id, product_id, quantity, price, subtotal) VALUES "
-		values := make([]interface{}, 0, len(details)*5)
+		query := "INSERT INTO transaction_details (transaction_id, product_id, quantity, price, subtotal, harga_beli) VALUES "
+		values := make([]interface{}, 0, len(details)*6)
 
 		for i, detail := range details {
 			if i > 0 {
 				query += ", "
 			}
-			query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d)",
-				i*5+1, i*5+2, i*5+3, i*5+4, i*5+5)
-			values = append(values, transactionID, detail.ProductID, detail.Quantity, detail.Price, detail.Subtotal)
+			query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d)",
+				i*6+1, i*6+2, i*6+3, i*6+4, i*6+5, i*6+6)
+			values = append(values, transactionID, detail.ProductID, detail.Quantity, detail.Price, detail.Subtotal, detail.HargaBeli)
 		}
 
 		// Execute batch insert - 1x query untuk semua items!

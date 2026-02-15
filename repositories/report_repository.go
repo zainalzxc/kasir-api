@@ -59,32 +59,37 @@ func (r *ReportRepository) GetSalesReportByDateRange(startDate, endDate time.Tim
 func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Time) (*models.SalesReport, error) {
 	var report models.SalesReport
 
-	// Query untuk mendapatkan total revenue dan total transaksi
+	// Query untuk mendapatkan total revenue, total transaksi, total items terjual, dan total profit
+	// JOIN dengan transaction_details untuk menghitung items sold dan profit
 	queryRevenue := `
 		SELECT 
-			COALESCE(SUM(total_amount), 0) as total_revenue,
-			COUNT(*) as total_transaksi
-		FROM transactions
-		WHERE created_at BETWEEN $1 AND $2
+			COALESCE(SUM(t.total_amount), 0) as total_revenue,
+			COUNT(DISTINCT t.id) as total_transaksi,
+			COALESCE(SUM(td.quantity), 0) as total_items_sold,
+			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, td.price) * td.quantity)), 0) as total_profit
+		FROM transactions t
+		LEFT JOIN transaction_details td ON t.id = td.transaction_id
+		WHERE t.created_at BETWEEN $1 AND $2
 	`
 
 	err := r.db.QueryRow(queryRevenue, startDate, endDate).Scan(
 		&report.TotalRevenue,
 		&report.TotalTransaksi,
+		&report.TotalItemsSold,
+		&report.TotalProfit,
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	// Query untuk mendapatkan produk terlaris
-	// Join transaction_details dengan products untuk mendapatkan nama produk
-	// Group by product_id dan nama produk
-	// Order by total quantity DESC untuk mendapatkan yang terlaris
-	// LIMIT 1 untuk ambil yang paling top
+	// Sekarang juga menghitung total_sales dan total_profit per produk
 	queryTopProduct := `
 		SELECT 
 			p.nama as nama_produk,
-			SUM(td.quantity) as jumlah
+			SUM(td.quantity) as jumlah,
+			COALESCE(SUM(td.subtotal), 0) as total_sales,
+			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, td.price) * td.quantity)), 0) as total_profit
 		FROM transaction_details td
 		JOIN products p ON td.product_id = p.id
 		JOIN transactions t ON td.transaction_id = t.id
@@ -98,6 +103,8 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 	err = r.db.QueryRow(queryTopProduct, startDate, endDate).Scan(
 		&topProduct.NamaProduk,
 		&topProduct.Jumlah,
+		&topProduct.TotalSales,
+		&topProduct.TotalProfit,
 	)
 
 	// Jika ada produk terlaris, tambahkan ke report

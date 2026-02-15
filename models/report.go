@@ -5,6 +5,8 @@ package models
 type SalesReport struct {
 	TotalRevenue   float64     `json:"total_revenue"`
 	TotalTransaksi int         `json:"total_transaksi"`
+	TotalItemsSold int         `json:"total_items_sold"` // Total items terjual
+	TotalProfit    float64     `json:"total_profit"`     // Total keuntungan (revenue - modal)
 	ProdukTerlaris *TopProduct `json:"produk_terlaris,omitempty"`
 }
 

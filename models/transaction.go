@@ -21,6 +21,7 @@ type TransactionDetail struct {
 	Quantity      int       `json:"quantity"`
 	Price         float64   `json:"price"`
 	Subtotal      float64   `json:"subtotal"`
+	HargaBeli     float64   `json:"harga_beli"` // Snapshot harga beli saat transaksi (untuk profit analysis)
 	CreatedAt     time.Time `json:"created_at"`
 }
 

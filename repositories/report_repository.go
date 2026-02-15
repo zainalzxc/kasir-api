@@ -3,8 +3,23 @@ package repositories
 import (
 	"database/sql"
 	"kasir-api/models"
+	"log"
 	"time"
 )
+
+// wibTimezone adalah timezone Asia/Jakarta (WIB, UTC+7)
+// Digunakan agar report konsisten dengan waktu lokal pengguna
+var wibTimezone *time.Location
+
+func init() {
+	var err error
+	wibTimezone, err = time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		// Fallback ke fixed offset UTC+7 jika LoadLocation gagal (misal di minimal container)
+		log.Printf("⚠️ Warning: Gagal load timezone Asia/Jakarta, menggunakan fixed UTC+7: %v", err)
+		wibTimezone = time.FixedZone("WIB", 7*60*60)
+	}
+}
 
 // ReportRepository handles database operations for reports
 // Repository untuk report/laporan
@@ -19,22 +34,22 @@ func NewReportRepository(db *sql.DB) *ReportRepository {
 }
 
 // GetDailySalesReport retrieves sales report for today
-// Fungsi ini mengambil laporan penjualan untuk hari ini
+// Fungsi ini mengambil laporan penjualan untuk hari ini (timezone WIB)
 func (r *ReportRepository) GetDailySalesReport() (*models.SalesReport, error) {
-	// Get today's date range (00:00:00 - 23:59:59)
-	now := time.Now()
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, now.Location())
+	// Get today's date range (00:00:00 - 23:59:59) in WIB timezone
+	now := time.Now().In(wibTimezone)
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, wibTimezone)
+	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, wibTimezone)
 
 	return r.getSalesReportByDateRange(startOfDay, endOfDay)
 }
 
 // GetSalesReportByDateRange retrieves sales report for a date range
-// Fungsi ini mengambil laporan penjualan untuk rentang tanggal tertentu
+// Fungsi ini mengambil laporan penjualan untuk rentang tanggal tertentu (timezone WIB)
 func (r *ReportRepository) GetSalesReportByDateRange(startDate, endDate time.Time) (*models.SalesReport, error) {
-	// Set time to start and end of day
-	startOfDay := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, startDate.Location())
-	endOfDay := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 999999999, endDate.Location())
+	// Set time to start and end of day in WIB timezone
+	startOfDay := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, wibTimezone)
+	endOfDay := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 999999999, wibTimezone)
 
 	return r.getSalesReportByDateRange(startOfDay, endOfDay)
 }

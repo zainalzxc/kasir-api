@@ -33,6 +33,8 @@ func (r *ProductRepository) GetAll(searchName string, pagination *models.Paginat
 			p.harga, 
 			p.stok, 
 			p.category_id,
+			p.harga_beli,
+			p.created_by,
 			c.id as category_id_full,
 			c.nama as category_name,
 			c.description as category_description
@@ -93,6 +95,8 @@ func (r *ProductRepository) GetAll(searchName string, pagination *models.Paginat
 		var categoryID sql.NullInt64    // Untuk handle NULL dari LEFT JOIN
 		var categoryName sql.NullString // Untuk handle NULL dari LEFT JOIN
 		var categoryDesc sql.NullString // Untuk handle NULL dari LEFT JOIN
+		var hargaBeli sql.NullFloat64   // Untuk handle NULL dari harga_beli
+		var createdBy sql.NullInt64     // Untuk handle NULL dari created_by
 
 		// Scan data dari row ke struct product
 		// Urutan harus sama dengan SELECT
@@ -102,12 +106,25 @@ func (r *ProductRepository) GetAll(searchName string, pagination *models.Paginat
 			&product.Harga,
 			&product.Stok,
 			&product.CategoryID,
+			&hargaBeli,
+			&createdBy,
 			&categoryID,
 			&categoryName,
 			&categoryDesc,
 		)
 		if err != nil {
 			return nil, 0, err // Kalau scan error, return error
+		}
+
+		// Set harga_beli jika valid
+		if hargaBeli.Valid {
+			product.HargaBeli = &hargaBeli.Float64
+		}
+
+		// Set created_by jika valid
+		if createdBy.Valid {
+			id := int(createdBy.Int64)
+			product.CreatedBy = &id
 		}
 
 		// Jika ada category, populate Category struct dengan semua field
@@ -138,6 +155,8 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 			p.harga, 
 			p.stok, 
 			p.category_id,
+			p.harga_beli,
+			p.created_by,
 			c.id as category_id_full,
 			c.nama as category_name,
 			c.description as category_description
@@ -153,6 +172,8 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 	var categoryID sql.NullInt64    // Untuk handle NULL dari LEFT JOIN
 	var categoryName sql.NullString // Untuk handle NULL dari LEFT JOIN
 	var categoryDesc sql.NullString // Untuk handle NULL dari LEFT JOIN
+	var hargaBeli sql.NullFloat64   // Untuk handle NULL dari harga_beli
+	var createdBy sql.NullInt64     // Untuk handle NULL dari created_by
 
 	// Scan hasil query ke struct product
 	err := row.Scan(
@@ -161,12 +182,25 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 		&product.Harga,
 		&product.Stok,
 		&product.CategoryID,
+		&hargaBeli,
+		&createdBy,
 		&categoryID,
 		&categoryName,
 		&categoryDesc,
 	)
 	if err != nil {
 		return nil, err // Kalau tidak ketemu atau error, return nil
+	}
+
+	// Set harga_beli jika valid
+	if hargaBeli.Valid {
+		product.HargaBeli = &hargaBeli.Float64
+	}
+
+	// Set created_by jika valid
+	if createdBy.Valid {
+		id := int(createdBy.Int64)
+		product.CreatedBy = &id
 	}
 
 	// Jika ada category, populate Category struct dengan semua field
@@ -189,21 +223,23 @@ func (r *ProductRepository) Create(product *models.Product) error {
 	// - Stok akan ditambahkan (stok lama + stok baru)
 	// - Harga akan diupdate dengan harga terbaru
 	// - CategoryID akan diupdate jika diberikan
+	// - HargaBeli akan diupdate (EXCLUDED.harga_beli)
 	// Jika belum ada, akan insert produk baru
 	query := `
-		INSERT INTO products (nama, harga, stok, category_id) 
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO products (nama, harga, stok, category_id, harga_beli, created_by) 
+		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (nama) 
 		DO UPDATE SET 
 			harga = EXCLUDED.harga,
 			stok = products.stok + EXCLUDED.stok,
-			category_id = EXCLUDED.category_id
+			category_id = EXCLUDED.category_id,
+			harga_beli = EXCLUDED.harga_beli
 		RETURNING id, stok
 	`
 
 	// Execute query dan scan ID + stok terbaru yang di-return
 	// $1 = product.Nama, $2 = product.Harga, $3 = product.Stok, $4 = product.CategoryID
-	err := r.db.QueryRow(query, product.Nama, product.Harga, product.Stok, product.CategoryID).Scan(&product.ID, &product.Stok)
+	err := r.db.QueryRow(query, product.Nama, product.Harga, product.Stok, product.CategoryID, product.HargaBeli, product.CreatedBy).Scan(&product.ID, &product.Stok)
 
 	return err // Return error (nil kalau sukses)
 }
@@ -212,13 +248,13 @@ func (r *ProductRepository) Create(product *models.Product) error {
 // Fungsi ini mengupdate produk yang sudah ada
 func (r *ProductRepository) Update(product *models.Product) error {
 	// SQL query untuk UPDATE
-	// SET untuk set nilai baru (termasuk category_id)
+	// SET untuk set nilai baru (termasuk category_id dan harga_beli)
 	// WHERE untuk kondisi (update produk dengan id tertentu)
-	query := "UPDATE products SET nama = $1, harga = $2, stok = $3, category_id = $4 WHERE id = $5"
+	query := "UPDATE products SET nama = $1, harga = $2, stok = $3, category_id = $4, harga_beli = $5 WHERE id = $6"
 
 	// Execute query
-	// $1 = nama, $2 = harga, $3 = stok, $4 = category_id, $5 = id
-	_, err := r.db.Exec(query, product.Nama, product.Harga, product.Stok, product.CategoryID, product.ID)
+	// $1 = nama, $2 = harga, $3 = stok, $4 = category_id, $5 = harga_beli, $6 = id
+	_, err := r.db.Exec(query, product.Nama, product.Harga, product.Stok, product.CategoryID, product.HargaBeli, product.ID)
 
 	return err // Return error (nil kalau sukses)
 }

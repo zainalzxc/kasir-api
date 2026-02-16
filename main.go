@@ -80,15 +80,23 @@ func main() {
 	reportService := services.NewReportService(reportRepo)    // Inject repo ke service
 	reportHandler := handlers.NewReportHandler(reportService) // Inject service ke handler
 
-	// Discount layers (NEW!)
+	// Discount layers
 	discountRepo := repositories.NewDiscountRepository(db)
 	discountHandler := handlers.NewDiscountHandler(discountRepo)
+
+	// Purchase layers (NEW!)
+	purchaseRepo := repositories.NewPurchaseRepository(db)
+	purchaseService := services.NewPurchaseService(purchaseRepo, cacheService)
+	purchaseHandler := handlers.NewPurchaseHandler(purchaseService)
 
 	// ==================== SETUP ROUTER WITH MIDDLEWARE ====================
 	// Create a new ServeMux for better routing
 	mux := http.NewServeMux()
 
-	// ... (routes existing) ...
+	// Purchase routes (Admin Only)
+	// /api/purchases -> GET (list), POST (create)
+	mux.Handle("/api/purchases/", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(purchaseHandler.HandlePurchaseByID))))
+	mux.Handle("/api/purchases", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(purchaseHandler.HandlePurchases))))
 
 	// Dashboard routes
 	// /api/dashboard/sales-trend -> GET (Admin Only) ?period=day|month|year
@@ -201,6 +209,12 @@ func main() {
 	fmt.Println("")
 	fmt.Println("📚 Transaction Endpoints:")
 	fmt.Println("  - POST   /api/checkout")
+	fmt.Println("  - GET    /api/transactions")
+	fmt.Println("")
+	fmt.Println("📚 Purchase Endpoints (Admin Only):")
+	fmt.Println("  - POST   /api/purchases")
+	fmt.Println("  - GET    /api/purchases")
+	fmt.Println("  - GET    /api/purchases/{id}")
 	fmt.Println("")
 	fmt.Println("📚 Report Endpoints:")
 	fmt.Println("  - GET    /api/report/hari-ini")

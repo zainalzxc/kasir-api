@@ -127,7 +127,41 @@ CREATE TABLE IF NOT EXISTS transaction_details (
 );
 
 -- ==========================================
--- 8. SEED DATA (Safe Insert)
+-- 8. TABLE: PURCHASES (Header Pembelian)
+-- ==========================================
+CREATE TABLE IF NOT EXISTS purchases (
+    id SERIAL PRIMARY KEY,
+    supplier_name VARCHAR(150),
+    total_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    notes TEXT,
+    created_by INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_purchases_created_by FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at);
+
+-- ==========================================
+-- 9. TABLE: PURCHASE_ITEMS (Detail Item Pembelian)
+-- ==========================================
+CREATE TABLE IF NOT EXISTS purchase_items (
+    id SERIAL PRIMARY KEY,
+    purchase_id INT NOT NULL,
+    product_id INT,
+    product_name VARCHAR(150) NOT NULL,
+    quantity INT NOT NULL CHECK (quantity > 0),
+    buy_price DECIMAL(15, 2) NOT NULL CHECK (buy_price >= 0),
+    sell_price DECIMAL(15, 2),
+    category_id INT,
+    subtotal DECIMAL(15, 2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_purchase_items_purchase FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE,
+    CONSTRAINT fk_purchase_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+    CONSTRAINT fk_purchase_items_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_purchase_items_purchase_id ON purchase_items(purchase_id);
+
 -- ==========================================
 INSERT INTO users (username, password, nama_lengkap, role) VALUES
 ('admin', '$2a$10$Rz/u.W2/tF3/tF3/tF3/tF3/tF3/tF3/tF3/tF3/tF3/tF3/tF3example', 'Administrator', 'admin'),

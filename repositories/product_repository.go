@@ -244,19 +244,17 @@ func (r *ProductRepository) Create(product *models.Product) error {
 	return err // Return error (nil kalau sukses)
 }
 
-// Update updates an existing product
-// Fungsi ini mengupdate produk yang sudah ada
+// Update updates product info (nama, harga jual, kategori only)
+// Stok dikelola lewat pembelian (POST /api/purchases) dan penjualan (POST /api/checkout)
+// Harga beli dikelola lewat pembelian (POST /api/purchases)
 func (r *ProductRepository) Update(product *models.Product) error {
-	// SQL query untuk UPDATE
-	// SET untuk set nilai baru (termasuk category_id dan harga_beli)
-	// WHERE untuk kondisi (update produk dengan id tertentu)
-	query := "UPDATE products SET nama = $1, harga = $2, stok = $3, category_id = $4, harga_beli = $5 WHERE id = $6"
+	// SQL query untuk UPDATE — hanya nama, harga jual, dan category
+	// Stok dan harga_beli TIDAK bisa diubah dari sini
+	query := "UPDATE products SET nama = $1, harga = $2, category_id = $3 WHERE id = $4"
 
-	// Execute query
-	// $1 = nama, $2 = harga, $3 = stok, $4 = category_id, $5 = harga_beli, $6 = id
-	_, err := r.db.Exec(query, product.Nama, product.Harga, product.Stok, product.CategoryID, product.HargaBeli, product.ID)
+	_, err := r.db.Exec(query, product.Nama, product.Harga, product.CategoryID, product.ID)
 
-	return err // Return error (nil kalau sukses)
+	return err
 }
 
 // Delete removes a product from database

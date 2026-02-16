@@ -59,8 +59,7 @@ func (r *ReportRepository) GetSalesReportByDateRange(startDate, endDate time.Tim
 func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Time) (*models.SalesReport, error) {
 	var report models.SalesReport
 
-	// Query untuk mendapatkan total revenue, total transaksi, total items terjual, dan total profit
-	// JOIN dengan transaction_details untuk menghitung items sold dan profit
+	// Query 1: Total revenue, transaksi, items terjual, dan profit kotor
 	queryRevenue := `
 		SELECT 
 			COALESCE(SUM(t.total_amount), 0) as total_revenue,
@@ -82,8 +81,27 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		return nil, err
 	}
 
-	// Query untuk mendapatkan semua produk terjual
-	// Diurutkan berdasarkan total_sales DESC (terlaris di atas)
+	// Query 2: Total pengeluaran (pembelian) dalam periode yang sama
+	queryPengeluaran := `
+		SELECT 
+			COALESCE(SUM(total_amount), 0) as total_pengeluaran,
+			COUNT(*) as total_pembelian
+		FROM purchases
+		WHERE created_at BETWEEN $1 AND $2
+	`
+
+	err = r.db.QueryRow(queryPengeluaran, startDate, endDate).Scan(
+		&report.TotalPengeluaran,
+		&report.TotalPembelian,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Hitung laba bersih = revenue - pengeluaran
+	report.LabaBersih = report.TotalRevenue - report.TotalPengeluaran
+
+	// Query 3: Semua produk terjual (sorted by total_sales DESC)
 	queryProducts := `
 		SELECT 
 			p.nama as nama_produk,
@@ -113,9 +131,8 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		produkTerlaris = append(produkTerlaris, p)
 	}
 
-	// Set array (jika kosong, tetap akan jadi [] di JSON karena bukan pointer)
 	if produkTerlaris == nil {
-		produkTerlaris = []models.TopProduct{} // Pastikan selalu return [] bukan null
+		produkTerlaris = []models.TopProduct{}
 	}
 	report.ProdukTerlaris = produkTerlaris
 

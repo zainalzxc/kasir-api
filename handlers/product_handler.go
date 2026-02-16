@@ -23,17 +23,16 @@ func NewProductHandler(service *services.ProductService) *ProductHandler {
 	return &ProductHandler{service: service} // Return struct dengan service yang sudah di-inject
 }
 
-// HandleProducts handles /api/produk (GET all, POST new)
-// Fungsi ini handle 2 method: GET (ambil semua) dan POST (tambah baru)
+// HandleProducts handles /api/produk (GET all only)
+// Produk baru sekarang dibuat lewat modul Pembelian (POST /api/purchases)
 func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) {
-	// Switch berdasarkan HTTP method
 	switch r.Method {
 	case "GET":
-		h.GetAll(w, r) // Kalau GET, panggil GetAll
+		h.GetAll(w, r)
 	case "POST":
-		h.Create(w, r) // Kalau POST, panggil Create
+		// Produk baru sekarang lewat modul pembelian
+		http.Error(w, "Untuk menambah produk baru, gunakan POST /api/purchases", http.StatusMethodNotAllowed)
 	default:
-		// Kalau method lain (PUT, DELETE, dll), return error
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }

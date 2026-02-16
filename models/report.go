@@ -3,11 +3,14 @@ package models
 // SalesReport represents daily sales summary
 // Struct untuk laporan penjualan harian
 type SalesReport struct {
-	TotalRevenue   float64      `json:"total_revenue"`
-	TotalTransaksi int          `json:"total_transaksi"`
-	TotalItemsSold int          `json:"total_items_sold"` // Total items terjual
-	TotalProfit    float64      `json:"total_profit"`     // Total keuntungan (revenue - modal)
-	ProdukTerlaris []TopProduct `json:"produk_terlaris"`  // Array semua produk terjual (sorted by total_sales DESC)
+	TotalRevenue     float64      `json:"total_revenue"`
+	TotalTransaksi   int          `json:"total_transaksi"`
+	TotalItemsSold   int          `json:"total_items_sold"`  // Total items terjual
+	TotalProfit      float64      `json:"total_profit"`      // Total keuntungan kotor (revenue - modal barang terjual)
+	TotalPengeluaran float64      `json:"total_pengeluaran"` // Total pembelian/pengadaan barang
+	TotalPembelian   int          `json:"total_pembelian"`   // Jumlah transaksi pembelian
+	LabaBersih       float64      `json:"laba_bersih"`       // Revenue - Pengeluaran
+	ProdukTerlaris   []TopProduct `json:"produk_terlaris"`   // Array semua produk terjual
 }
 
 // TopProduct represents the best selling product

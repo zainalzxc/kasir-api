@@ -44,3 +44,8 @@ func (s *TransactionService) GetAll() ([]models.Transaction, error) {
 func (s *TransactionService) GetByDateRange(startDate, endDate time.Time) ([]models.Transaction, error) {
 	return s.repo.GetByDateRange(startDate, endDate)
 }
+
+// GetByID returns a transaction with items detail
+func (s *TransactionService) GetByID(id int) (*models.TransactionWithItems, error) {
+	return s.repo.GetByID(id)
+}

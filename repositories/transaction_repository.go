@@ -184,11 +184,21 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 	finalTotal := totalAmount - globalDiscountAmount
 	totalDiscount += globalDiscountAmount
 
-	// 3. Insert Transaction Header
+	// Calculate payment & change
+	paymentAmount := req.PaymentAmount
+	changeAmount := 0.0
+	if paymentAmount > 0 {
+		changeAmount = paymentAmount - finalTotal
+		if changeAmount < 0 {
+			changeAmount = 0
+		}
+	}
+
+	// 3. Insert Transaction Header (with payment_amount and change_amount)
 	var transactionID int
 	err = tx.QueryRow(
-		"INSERT INTO transactions (total_amount, discount_id, discount_amount) VALUES ($1, $2, $3) RETURNING id",
-		finalTotal, usedDiscountID, totalDiscount,
+		"INSERT INTO transactions (total_amount, discount_id, discount_amount, payment_amount, change_amount) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+		finalTotal, usedDiscountID, totalDiscount, paymentAmount, changeAmount,
 	).Scan(&transactionID)
 	if err != nil {
 		return nil, err
@@ -208,7 +218,6 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 			values = append(values, transactionID, detail.ProductID, detail.Quantity, detail.Price, detail.Subtotal, detail.HargaBeli)
 		}
 
-		// Execute batch insert - 1x query untuk semua items!
 		_, err = tx.Exec(query, values...)
 		if err != nil {
 			return nil, err
@@ -227,6 +236,8 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		TotalAmount:    finalTotal,
 		DiscountID:     usedDiscountID,
 		DiscountAmount: totalDiscount,
+		PaymentAmount:  paymentAmount,
+		ChangeAmount:   changeAmount,
 	}
 
 	return transaction, nil
@@ -244,12 +255,14 @@ func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
 			t.total_amount, 
 			t.discount_id, 
 			t.discount_amount, 
+			COALESCE(t.payment_amount, 0) as payment_amount,
+			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
 			COALESCE(SUM(td.quantity), 0) as total_items,
 			t.total_amount - COALESCE(SUM(COALESCE(td.harga_beli, td.price) * td.quantity), 0) as profit
 		FROM transactions t
 		LEFT JOIN transaction_details td ON t.id = td.transaction_id
-		GROUP BY t.id, t.total_amount, t.discount_id, t.discount_amount, t.created_at
+		GROUP BY t.id, t.total_amount, t.discount_id, t.discount_amount, t.payment_amount, t.change_amount, t.created_at
 		ORDER BY t.created_at DESC
 	`
 
@@ -265,7 +278,7 @@ func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
 		var t models.Transaction
 		var discountID sql.NullInt64
 
-		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.CreatedAt, &t.TotalItems, &t.Profit)
+		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.PaymentAmount, &t.ChangeAmount, &t.CreatedAt, &t.TotalItems, &t.Profit)
 		if err != nil {
 			return nil, err
 		}
@@ -290,13 +303,15 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time) ([]
 			t.total_amount, 
 			t.discount_id, 
 			t.discount_amount, 
+			COALESCE(t.payment_amount, 0) as payment_amount,
+			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
 			COALESCE(SUM(td.quantity), 0) as total_items,
 			t.total_amount - COALESCE(SUM(COALESCE(td.harga_beli, td.price) * td.quantity), 0) as profit
 		FROM transactions t
 		LEFT JOIN transaction_details td ON t.id = td.transaction_id
 		WHERE t.created_at BETWEEN $1 AND $2
-		GROUP BY t.id, t.total_amount, t.discount_id, t.discount_amount, t.created_at
+		GROUP BY t.id, t.total_amount, t.discount_id, t.discount_amount, t.payment_amount, t.change_amount, t.created_at
 		ORDER BY t.created_at DESC
 	`
 
@@ -312,7 +327,7 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time) ([]
 		var t models.Transaction
 		var discountID sql.NullInt64
 
-		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.CreatedAt, &t.TotalItems, &t.Profit)
+		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.PaymentAmount, &t.ChangeAmount, &t.CreatedAt, &t.TotalItems, &t.Profit)
 		if err != nil {
 			return nil, err
 		}
@@ -326,4 +341,78 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time) ([]
 	}
 
 	return transactions, nil
+}
+
+// GetByID retrieves a transaction by ID with all its items
+func (r *TransactionRepository) GetByID(id int) (*models.TransactionWithItems, error) {
+	queryHeader := `
+		SELECT 
+			t.id, 
+			t.total_amount, 
+			t.discount_amount, 
+			COALESCE(t.payment_amount, 0) as payment_amount,
+			COALESCE(t.change_amount, 0) as change_amount,
+			t.created_at,
+			COALESCE(SUM(td.quantity), 0) as total_items,
+			t.total_amount - COALESCE(SUM(COALESCE(td.harga_beli, td.price) * td.quantity), 0) as profit
+		FROM transactions t
+		LEFT JOIN transaction_details td ON t.id = td.transaction_id
+		WHERE t.id = $1
+		GROUP BY t.id, t.total_amount, t.discount_amount, t.payment_amount, t.change_amount, t.created_at
+	`
+
+	var result models.TransactionWithItems
+	err := r.db.QueryRow(queryHeader, id).Scan(
+		&result.ID,
+		&result.TotalAmount,
+		&result.DiscountAmount,
+		&result.PaymentAmount,
+		&result.ChangeAmount,
+		&result.CreatedAt,
+		&result.TotalItems,
+		&result.Profit,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("transaksi dengan ID %d tidak ditemukan", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("gagal mengambil data transaksi: %w", err)
+	}
+
+	queryItems := `
+		SELECT 
+			td.id,
+			td.product_id,
+			COALESCE(p.nama, 'Produk Dihapus') as product_name,
+			td.quantity,
+			td.price,
+			td.subtotal
+		FROM transaction_details td
+		LEFT JOIN products p ON td.product_id = p.id
+		WHERE td.transaction_id = $1
+		ORDER BY td.id
+	`
+
+	rows, err := r.db.Query(queryItems, id)
+	if err != nil {
+		return nil, fmt.Errorf("gagal mengambil detail items: %w", err)
+	}
+	defer rows.Close()
+
+	var items []models.TransactionDetail
+	for rows.Next() {
+		var item models.TransactionDetail
+		err := rows.Scan(&item.ID, &item.ProductID, &item.ProductName, &item.Quantity, &item.Price, &item.Subtotal)
+		if err != nil {
+			return nil, fmt.Errorf("gagal membaca detail item: %w", err)
+		}
+		items = append(items, item)
+	}
+
+	if items == nil {
+		items = []models.TransactionDetail{}
+	}
+	result.Items = items
+
+	return &result, nil
 }

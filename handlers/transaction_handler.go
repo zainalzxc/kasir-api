@@ -5,6 +5,8 @@ import (
 	"kasir-api/models"
 	"kasir-api/services"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -97,4 +99,40 @@ func (h *TransactionHandler) HandleTransactions(w http.ResponseWriter, r *http.R
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(transactions)
+}
+
+// HandleTransactionByID handles /api/transactions/{id} (GET by ID)
+func (h *TransactionHandler) HandleTransactionByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	h.GetByID(w, r)
+}
+
+// GetByID handles GET /api/transactions/{id}
+// Returns full transaction detail with items
+func (h *TransactionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	// Extract ID dari URL
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/transactions/")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "ID transaksi tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.service.GetByID(id)
+	if err != nil {
+		if strings.Contains(err.Error(), "tidak ditemukan") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data": result,
+	})
 }

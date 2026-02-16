@@ -165,7 +165,8 @@ func main() {
 
 	// Transaction routes
 	mux.Handle("/api/checkout", middleware.AuthMiddleware(http.HandlerFunc(transactionHandler.Checkout)))
-	mux.Handle("/api/transactions", middleware.AuthMiddleware(http.HandlerFunc(transactionHandler.HandleTransactions))) // NEW for History
+	mux.Handle("/api/transactions/", middleware.AuthMiddleware(http.HandlerFunc(transactionHandler.HandleTransactionByID))) // GET by ID
+	mux.Handle("/api/transactions", middleware.AuthMiddleware(http.HandlerFunc(transactionHandler.HandleTransactions)))     // GET all
 
 	// Report routes
 	mux.Handle("/api/report/hari-ini", middleware.AuthMiddleware(http.HandlerFunc(reportHandler.GetDailySalesReport)))

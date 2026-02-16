@@ -7,55 +7,49 @@ import (
 	"time"
 )
 
-// wibTimezone adalah timezone Asia/Jakarta (WIB, UTC+7)
-// Digunakan agar report konsisten dengan waktu lokal pengguna
-var wibTimezone *time.Location
+// defaultTimezone digunakan hanya untuk fallback GetDailySalesReport tanpa parameter
+var defaultTimezone *time.Location
 
 func init() {
 	var err error
-	wibTimezone, err = time.LoadLocation("Asia/Jakarta")
+	defaultTimezone, err = time.LoadLocation("Asia/Jakarta")
 	if err != nil {
-		// Fallback ke fixed offset UTC+7 jika LoadLocation gagal (misal di minimal container)
 		log.Printf("⚠️ Warning: Gagal load timezone Asia/Jakarta, menggunakan fixed UTC+7: %v", err)
-		wibTimezone = time.FixedZone("WIB", 7*60*60)
+		defaultTimezone = time.FixedZone("WIB", 7*60*60)
 	}
 }
 
 // ReportRepository handles database operations for reports
-// Repository untuk report/laporan
 type ReportRepository struct {
 	db *sql.DB
 }
 
 // NewReportRepository creates a new ReportRepository
-// Constructor untuk membuat instance ReportRepository
 func NewReportRepository(db *sql.DB) *ReportRepository {
 	return &ReportRepository{db: db}
 }
 
-// GetDailySalesReport retrieves sales report for today
-// Fungsi ini mengambil laporan penjualan untuk hari ini (timezone WIB)
+// GetDailySalesReport retrieves sales report for today (fallback, uses default timezone)
 func (r *ReportRepository) GetDailySalesReport() (*models.SalesReport, error) {
-	// Get today's date range (00:00:00 - 23:59:59) in WIB timezone
-	now := time.Now().In(wibTimezone)
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, wibTimezone)
-	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, wibTimezone)
+	now := time.Now().In(defaultTimezone)
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, defaultTimezone)
+	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, defaultTimezone)
 
 	return r.getSalesReportByDateRange(startOfDay, endOfDay)
 }
 
 // GetSalesReportByDateRange retrieves sales report for a date range
-// Fungsi ini mengambil laporan penjualan untuk rentang tanggal tertentu (timezone WIB)
+// startDate dan endDate sudah mengandung timezone yang benar dari handler/caller
 func (r *ReportRepository) GetSalesReportByDateRange(startDate, endDate time.Time) (*models.SalesReport, error) {
-	// Set time to start and end of day in WIB timezone
-	startOfDay := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, wibTimezone)
-	endOfDay := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 999999999, wibTimezone)
+	// Gunakan timezone yang sudah embedded di startDate/endDate (dari handler)
+	loc := startDate.Location()
+	startOfDay := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, loc)
+	endOfDay := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 999999999, loc)
 
 	return r.getSalesReportByDateRange(startOfDay, endOfDay)
 }
 
 // getSalesReportByDateRange is a private helper function
-// Fungsi helper untuk mengambil laporan berdasarkan rentang tanggal
 func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Time) (*models.SalesReport, error) {
 	var report models.SalesReport
 
@@ -140,13 +134,9 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 }
 
 // GetSalesTrend retrieves sales trend data for chart
-// Fungsi untuk mengambil data grafik penjualan
-// interval: 'day', 'month', 'year'
 func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval string) ([]models.SalesTrend, error) {
 	var trends []models.SalesTrend
 
-	// Tentukan format tanggal output berdasarkan interval
-	// PostgreSQL format strings
 	var dateFormat string
 	var truncateUnit string
 
@@ -165,11 +155,6 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 		dateFormat = "YYYY-MM-DD"
 	}
 
-	// Query Aggregation Complex
-	// 1. Group by DATE_TRUNC(unit, created_at)
-	// 2. Sum total_amount -> TotalSales
-	// 3. Sum (subtotal - (harga_beli * quantity)) -> TotalProfit
-	// 4. Count distinct transactions -> TransactionCount
 	query := `
 		SELECT 
 			TO_CHAR(DATE_TRUNC($1, t.created_at), $2) as period,
@@ -191,8 +176,6 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 
 	for rows.Next() {
 		var t models.SalesTrend
-		// Scan hasil query ke struct
-		// Note: total_sales & total_profit mungkin float/decimal
 		err := rows.Scan(&t.Date, &t.TotalSales, &t.TotalProfit, &t.TransactionCount)
 		if err != nil {
 			return nil, err
@@ -204,10 +187,8 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 }
 
 // GetTopProducts returns top selling products by quantity and by profit
-// Fungsi untuk mengambil produk terlaris (by Qty) dan paling untung (by Profit)
 func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit int) ([]models.TopProduct, []models.TopProduct, error) {
 	// 1. Top by Quantity
-	// Query untuk top qty
 	queryQty := `
 		SELECT 
 			p.nama,
@@ -239,7 +220,6 @@ func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit in
 	}
 
 	// 2. Top by Profit
-	// Query untuk top profit
 	queryProfit := `
 		SELECT 
 			p.nama,

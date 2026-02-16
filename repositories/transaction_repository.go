@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"kasir-api/models"
+	"time"
 )
 
 // TransactionRepository handles database operations for transactions
@@ -253,6 +254,53 @@ func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
 	`
 
 	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var transactions []models.Transaction
+
+	for rows.Next() {
+		var t models.Transaction
+		var discountID sql.NullInt64
+
+		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.CreatedAt, &t.TotalItems, &t.Profit)
+		if err != nil {
+			return nil, err
+		}
+
+		if discountID.Valid {
+			id := int(discountID.Int64)
+			t.DiscountID = &id
+		}
+
+		transactions = append(transactions, t)
+	}
+
+	return transactions, nil
+}
+
+// GetByDateRange retrieves transactions within a date range
+// startDate dan endDate sudah mengandung timezone yang benar dari handler
+func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time) ([]models.Transaction, error) {
+	query := `
+		SELECT 
+			t.id, 
+			t.total_amount, 
+			t.discount_id, 
+			t.discount_amount, 
+			t.created_at,
+			COALESCE(SUM(td.quantity), 0) as total_items,
+			t.total_amount - COALESCE(SUM(COALESCE(td.harga_beli, td.price) * td.quantity), 0) as profit
+		FROM transactions t
+		LEFT JOIN transaction_details td ON t.id = td.transaction_id
+		WHERE t.created_at BETWEEN $1 AND $2
+		GROUP BY t.id, t.total_amount, t.discount_id, t.discount_amount, t.created_at
+		ORDER BY t.created_at DESC
+	`
+
+	rows, err := r.db.Query(query, startDate, endDate)
 	if err != nil {
 		return nil, err
 	}

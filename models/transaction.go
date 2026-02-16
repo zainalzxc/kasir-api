@@ -10,6 +10,8 @@ type Transaction struct {
 	CreatedAt      time.Time `json:"created_at" db:"created_at"`
 	DiscountID     *int      `json:"discount_id,omitempty" db:"discount_id"` // Diskon yang dipakai (Nullable)
 	DiscountAmount float64   `json:"discount_amount" db:"discount_amount"`   // Jumlah potongan harga (Rp)
+	TotalItems     int       `json:"total_items"`                            // Total items terjual dalam transaksi ini
+	Profit         float64   `json:"profit"`                                 // Keuntungan = total_amount - SUM(harga_beli * quantity)
 }
 
 // TransactionDetail represents a transaction detail item

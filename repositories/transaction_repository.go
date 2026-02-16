@@ -232,13 +232,24 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 }
 
 // GetAll retrieves all transactions ordered by date descending
-// Fungsi ini mengambil semua data transaksi untuk history
+// Fungsi ini mengambil semua data transaksi untuk history, termasuk profit per transaksi
 func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
-	// Query untuk mengambil semua transaksi diurutkan dari yang terbaru
+	// Query yang menghitung profit dan total items per transaksi
+	// Profit = total_amount - SUM(harga_beli * quantity)
+	// Jika harga_beli NULL, fallback ke price (profit = 0)
 	query := `
-		SELECT id, total_amount, discount_id, discount_amount, created_at 
-		FROM transactions 
-		ORDER BY created_at DESC
+		SELECT 
+			t.id, 
+			t.total_amount, 
+			t.discount_id, 
+			t.discount_amount, 
+			t.created_at,
+			COALESCE(SUM(td.quantity), 0) as total_items,
+			t.total_amount - COALESCE(SUM(COALESCE(td.harga_beli, td.price) * td.quantity), 0) as profit
+		FROM transactions t
+		LEFT JOIN transaction_details td ON t.id = td.transaction_id
+		GROUP BY t.id, t.total_amount, t.discount_id, t.discount_amount, t.created_at
+		ORDER BY t.created_at DESC
 	`
 
 	rows, err := r.db.Query(query)
@@ -251,13 +262,9 @@ func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
 
 	for rows.Next() {
 		var t models.Transaction
-		// Scan data ke struct
-		// Note: discount_id bisa NULL, jadi perlu handle sql.NullInt64 atau pointer *int
-		// Di struct Transaction, DiscountID dalah *int, jadi driver sql/pgx biasanya bisa handle
-		// Tapi aman-nya kita pakai sql.NullInt64 dulu untuk scan
 		var discountID sql.NullInt64
 
-		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.CreatedAt)
+		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.CreatedAt, &t.TotalItems, &t.Profit)
 		if err != nil {
 			return nil, err
 		}

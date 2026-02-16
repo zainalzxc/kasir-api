@@ -82,39 +82,42 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		return nil, err
 	}
 
-	// Query untuk mendapatkan produk terlaris
-	// Sekarang juga menghitung total_sales dan total_profit per produk
-	queryTopProduct := `
+	// Query untuk mendapatkan semua produk terjual
+	// Diurutkan berdasarkan total_sales DESC (terlaris di atas)
+	queryProducts := `
 		SELECT 
 			p.nama as nama_produk,
 			SUM(td.quantity) as jumlah,
-			COALESCE(SUM(td.subtotal), 0) as total_sales,
-			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, td.price) * td.quantity)), 0) as total_profit
+			COALESCE(SUM(td.quantity * td.price), 0) as total_sales,
+			COALESCE(SUM(td.quantity * (td.price - COALESCE(td.harga_beli, 0))), 0) as total_profit
 		FROM transaction_details td
 		JOIN products p ON td.product_id = p.id
 		JOIN transactions t ON td.transaction_id = t.id
 		WHERE t.created_at BETWEEN $1 AND $2
 		GROUP BY p.id, p.nama
-		ORDER BY jumlah DESC
-		LIMIT 1
+		ORDER BY total_sales DESC
 	`
 
-	var topProduct models.TopProduct
-	err = r.db.QueryRow(queryTopProduct, startDate, endDate).Scan(
-		&topProduct.NamaProduk,
-		&topProduct.Jumlah,
-		&topProduct.TotalSales,
-		&topProduct.TotalProfit,
-	)
-
-	// Jika ada produk terlaris, tambahkan ke report
-	if err == nil {
-		report.ProdukTerlaris = &topProduct
-	} else if err != sql.ErrNoRows {
-		// Jika error bukan "no rows", return error
+	rows, err := r.db.Query(queryProducts, startDate, endDate)
+	if err != nil {
 		return nil, err
 	}
-	// Jika sql.ErrNoRows (tidak ada transaksi), ProdukTerlaris akan tetap nil
+	defer rows.Close()
+
+	var produkTerlaris []models.TopProduct
+	for rows.Next() {
+		var p models.TopProduct
+		if err := rows.Scan(&p.NamaProduk, &p.Jumlah, &p.TotalSales, &p.TotalProfit); err != nil {
+			return nil, err
+		}
+		produkTerlaris = append(produkTerlaris, p)
+	}
+
+	// Set array (jika kosong, tetap akan jadi [] di JSON karena bukan pointer)
+	if produkTerlaris == nil {
+		produkTerlaris = []models.TopProduct{} // Pastikan selalu return [] bukan null
+	}
+	report.ProdukTerlaris = produkTerlaris
 
 	return &report, nil
 }

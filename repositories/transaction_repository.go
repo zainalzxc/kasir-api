@@ -17,140 +17,186 @@ func NewTransactionRepository(db *sql.DB) *TransactionRepository {
 	return &TransactionRepository{db: db}
 }
 
-// CreateTransaction creates a new transaction with details
+// CreateTransaction creates a new transaction with details (OPTIMIZED - batch queries)
+// API contract tidak berubah - request dan response format tetap sama
 func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (*models.Transaction, error) {
-	// Begin database transaction
 	tx, err := r.db.Begin()
 	if err != nil {
 		return nil, err
 	}
-
-	// Defer rollback jika terjadi error
 	defer func() {
 		if err != nil {
 			tx.Rollback()
 		}
 	}()
 
-	var totalAmount float64
-	var totalDiscount float64 // Akumulasi Item Discount + Global Discount
-	details := make([]models.TransactionDetail, 0)
+	// ─── STEP 1: Batch fetch ALL products in 1 query (bukan per-item) ───
+	productIDPlaceholders := ""
+	productIDArgs := make([]interface{}, len(req.Items))
+	for i, item := range req.Items {
+		productIDArgs[i] = item.ProductID
+		if i > 0 {
+			productIDPlaceholders += ", "
+		}
+		productIDPlaceholders += fmt.Sprintf("$%d", i+1)
+	}
 
-	// 1. Process Items & Item Discounts (Product OR Category)
+	productRows, err := tx.Query(
+		fmt.Sprintf("SELECT id, harga, stok, category_id, harga_beli FROM products WHERE id IN (%s)", productIDPlaceholders),
+		productIDArgs...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("gagal mengambil data produk: %w", err)
+	}
+
+	type productInfo struct {
+		Price      float64
+		Stok       int
+		CategoryID sql.NullInt64
+		HargaBeli  sql.NullFloat64
+	}
+	productMap := make(map[int]*productInfo)
+	for productRows.Next() {
+		var id int
+		var p productInfo
+		if scanErr := productRows.Scan(&id, &p.Price, &p.Stok, &p.CategoryID, &p.HargaBeli); scanErr != nil {
+			productRows.Close()
+			return nil, scanErr
+		}
+		productMap[id] = &p
+	}
+	productRows.Close()
+
+	// Validasi
 	for _, item := range req.Items {
-		var price float64
-		var stok int
-		var categoryID sql.NullInt64  // Bisa NULL
-		var hargaBeli sql.NullFloat64 // Harga beli/modal (bisa NULL)
-
-		// Fetch product details including category_id dan harga_beli
-		err = tx.QueryRow("SELECT harga, stok, category_id, harga_beli FROM products WHERE id = $1", item.ProductID).Scan(&price, &stok, &categoryID, &hargaBeli)
-		if err == sql.ErrNoRows {
+		p, exists := productMap[item.ProductID]
+		if !exists {
 			return nil, fmt.Errorf("produk dengan ID %d tidak ditemukan", item.ProductID)
 		}
-		if err != nil {
-			return nil, err
+		if p.Stok < item.Quantity {
+			return nil, fmt.Errorf("stok produk ID %d tidak mencukupi (sisa: %d, diminta: %d)", item.ProductID, p.Stok, item.Quantity)
 		}
+	}
 
-		if stok < item.Quantity {
-			return nil, fmt.Errorf("stok produk ID %d tidak mencukupi", item.ProductID)
+	// ─── STEP 2: Batch fetch ALL active item discounts in 1 query ───
+	discountRows, err := tx.Query(`
+		SELECT id, type, value, product_id, category_id FROM discounts 
+		WHERE is_active = TRUE AND NOW() BETWEEN start_date AND end_date
+		AND (product_id IS NOT NULL OR category_id IS NOT NULL)
+		ORDER BY value DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("gagal mengambil data diskon: %w", err)
+	}
+
+	type discInfo struct {
+		Type  string
+		Value float64
+	}
+	productDiscounts := make(map[int]*discInfo)
+	categoryDiscounts := make(map[int]*discInfo)
+	for discountRows.Next() {
+		var id int
+		var dType string
+		var dValue float64
+		var productID, categoryID sql.NullInt64
+		if scanErr := discountRows.Scan(&id, &dType, &dValue, &productID, &categoryID); scanErr != nil {
+			discountRows.Close()
+			return nil, scanErr
 		}
-
-		// --- ITEM DISCOUNT LOGIC (Priority: Product > Category) ---
-		var itemDiscountPerUnit float64 = 0
-		var discType string
-		var discValue float64
-		var discountFound bool = false
-
-		// 1. Cek Diskon PRODAK (Highest Priority)
-		errDisc := tx.QueryRow(`
-			SELECT type, value FROM discounts 
-			WHERE product_id = $1 AND is_active = TRUE 
-			AND NOW() BETWEEN start_date AND end_date
-			ORDER BY value DESC LIMIT 1`, item.ProductID).Scan(&discType, &discValue)
-
-		if errDisc == nil {
-			// Product Discount Found!
-			discountFound = true
-		} else if categoryID.Valid {
-			// 2. Jika tidak ada diskon produk, Cek Diskon KATEGORI
-			errCatDisc := tx.QueryRow(`
-				SELECT type, value FROM discounts 
-				WHERE category_id = $1 AND is_active = TRUE 
-				AND NOW() BETWEEN start_date AND end_date
-				ORDER BY value DESC LIMIT 1`, categoryID.Int64).Scan(&discType, &discValue)
-
-			if errCatDisc == nil {
-				// Category Discount Found!
-				discountFound = true
+		if productID.Valid {
+			pid := int(productID.Int64)
+			if _, exists := productDiscounts[pid]; !exists {
+				productDiscounts[pid] = &discInfo{Type: dType, Value: dValue}
 			}
 		}
+		if categoryID.Valid {
+			cid := int(categoryID.Int64)
+			if _, exists := categoryDiscounts[cid]; !exists {
+				categoryDiscounts[cid] = &discInfo{Type: dType, Value: dValue}
+			}
+		}
+	}
+	discountRows.Close()
 
-		// Calculate Discount Amount if any found
-		if discountFound {
-			if discType == "PERCENTAGE" {
-				itemDiscountPerUnit = price * (discValue / 100)
+	// ─── STEP 3: Process items in-memory (TANPA query tambahan) ───
+	var totalAmount float64
+	var totalDiscount float64
+	details := make([]models.TransactionDetail, 0, len(req.Items))
+
+	for _, item := range req.Items {
+		p := productMap[item.ProductID]
+
+		var itemDiscountPerUnit float64
+		disc, found := productDiscounts[item.ProductID]
+		if !found && p.CategoryID.Valid {
+			disc, _ = categoryDiscounts[int(p.CategoryID.Int64)]
+		}
+		if disc != nil {
+			if disc.Type == "PERCENTAGE" {
+				itemDiscountPerUnit = p.Price * (disc.Value / 100)
 			} else {
-				itemDiscountPerUnit = discValue
+				itemDiscountPerUnit = disc.Value
 			}
-			// Safety: Discount cannot exceed price
-			if itemDiscountPerUnit > price {
-				itemDiscountPerUnit = price
+			if itemDiscountPerUnit > p.Price {
+				itemDiscountPerUnit = p.Price
 			}
 		}
 
-		// Calculate Subtotal (Net Price * Qty)
-		priceAfterDisc := price - itemDiscountPerUnit
+		priceAfterDisc := p.Price - itemDiscountPerUnit
 		subtotal := priceAfterDisc * float64(item.Quantity)
-
-		// Accumulate totals
 		totalAmount += subtotal
 		totalDiscount += itemDiscountPerUnit * float64(item.Quantity)
 
-		// Update Stock
-		_, err = tx.Exec("UPDATE products SET stok = stok - $1 WHERE id = $2", item.Quantity, item.ProductID)
-		if err != nil {
-			return nil, err
-		}
-
-		// Tentukan harga beli untuk snapshot di transaction_details
-		// Jika harga_beli NULL, gunakan harga jual sebagai fallback (profit = 0)
 		var hargaBeliSnapshot float64
-		if hargaBeli.Valid {
-			hargaBeliSnapshot = hargaBeli.Float64
+		if p.HargaBeli.Valid {
+			hargaBeliSnapshot = p.HargaBeli.Float64
 		} else {
-			hargaBeliSnapshot = price // fallback: anggap modal = harga jual
+			hargaBeliSnapshot = p.Price
 		}
 
-		// Add to details
-		// Note: Subtotal is NET. Price is GROSS. HargaBeli is snapshot modal.
 		details = append(details, models.TransactionDetail{
 			ProductID: item.ProductID,
 			Quantity:  item.Quantity,
-			Price:     price,             // Store Original Price
-			Subtotal:  subtotal,          // Store Net Subtotal
-			HargaBeli: hargaBeliSnapshot, // Store harga beli snapshot untuk profit analysis
+			Price:     p.Price,
+			Subtotal:  subtotal,
+			HargaBeli: hargaBeliSnapshot,
 		})
 	}
 
-	// 2. Process Global Discount (if any)
-	// Apply on top of totalAmount (which is already net of item discounts)
+	// ─── STEP 4: Batch UPDATE stock in 1 query ───
+	stockQuery := "UPDATE products SET stok = CASE "
+	stockIDs := ""
+	stockArgs := make([]interface{}, 0, len(req.Items)*2)
+	argIdx := 1
+	for i, item := range req.Items {
+		stockQuery += fmt.Sprintf("WHEN id = $%d THEN stok - $%d ", argIdx, argIdx+1)
+		stockArgs = append(stockArgs, item.ProductID, item.Quantity)
+		if i > 0 {
+			stockIDs += ", "
+		}
+		stockIDs += fmt.Sprintf("$%d", argIdx)
+		argIdx += 2
+	}
+	stockQuery += fmt.Sprintf("END WHERE id IN (%s)", stockIDs)
+	_, err = tx.Exec(stockQuery, stockArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("gagal update stok: %w", err)
+	}
+
+	// ─── STEP 5: Process Global Discount (if any) ───
 	var usedDiscountID *int
 	var globalDiscountAmount float64
 
 	if req.DiscountID != nil {
 		var d models.Discount
 		var isValid bool
-		// Cek validitas global discount (product_id IS NULL AND category_id IS NULL)
-		// Pastikan diskon ini BUKAN diskon produk/kategori
 		err = tx.QueryRow(`
 			SELECT id, type, value, min_order_amount, (NOW() BETWEEN start_date AND end_date) as is_valid 
-			FROM discounts 
-			WHERE id = $1 AND is_active = TRUE 
+			FROM discounts WHERE id = $1 AND is_active = TRUE 
 			AND product_id IS NULL AND category_id IS NULL`, *req.DiscountID).Scan(
 			&d.ID, &d.Type, &d.Value, &d.MinOrderAmount, &isValid,
 		)
-
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("diskon global ID %d tidak valid atau (mungkin diskon produk/kategori)", *req.DiscountID)
 		}
@@ -160,31 +206,23 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		if !isValid {
 			return nil, fmt.Errorf("diskon global sudah kedaluwarsa")
 		}
-
 		if totalAmount < d.MinOrderAmount {
 			return nil, fmt.Errorf("min order %.0f tidak terpenuhi", d.MinOrderAmount)
 		}
-
-		// Calculate global discount
 		if d.Type == "PERCENTAGE" {
 			globalDiscountAmount = totalAmount * (d.Value / 100)
 		} else {
 			globalDiscountAmount = d.Value
 		}
-
-		// Cap global discount
 		if globalDiscountAmount > totalAmount {
 			globalDiscountAmount = totalAmount
 		}
-
 		usedDiscountID = req.DiscountID
 	}
 
-	// Final Calculation
 	finalTotal := totalAmount - globalDiscountAmount
 	totalDiscount += globalDiscountAmount
 
-	// Calculate payment & change
 	paymentAmount := req.PaymentAmount
 	changeAmount := 0.0
 	if paymentAmount > 0 {
@@ -194,7 +232,7 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		}
 	}
 
-	// 3. Insert Transaction Header (with payment_amount and change_amount)
+	// ─── STEP 6: Insert transaction header ───
 	var transactionID int
 	err = tx.QueryRow(
 		"INSERT INTO transactions (total_amount, discount_id, discount_amount, payment_amount, change_amount) VALUES ($1, $2, $3, $4, $5) RETURNING id",
@@ -204,11 +242,10 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		return nil, err
 	}
 
-	// 4. Batch Insert Details (including harga_beli snapshot)
+	// ─── STEP 7: Batch insert details ───
 	if len(details) > 0 {
 		query := "INSERT INTO transaction_details (transaction_id, product_id, quantity, price, subtotal, harga_beli) VALUES "
 		values := make([]interface{}, 0, len(details)*6)
-
 		for i, detail := range details {
 			if i > 0 {
 				query += ", "
@@ -217,30 +254,26 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 				i*6+1, i*6+2, i*6+3, i*6+4, i*6+5, i*6+6)
 			values = append(values, transactionID, detail.ProductID, detail.Quantity, detail.Price, detail.Subtotal, detail.HargaBeli)
 		}
-
 		_, err = tx.Exec(query, values...)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	// Commit transaction
+	// ─── STEP 8: Commit ───
 	err = tx.Commit()
 	if err != nil {
 		return nil, err
 	}
 
-	// Return transaction yang baru dibuat
-	transaction := &models.Transaction{
+	return &models.Transaction{
 		ID:             transactionID,
 		TotalAmount:    finalTotal,
 		DiscountID:     usedDiscountID,
 		DiscountAmount: totalDiscount,
 		PaymentAmount:  paymentAmount,
 		ChangeAmount:   changeAmount,
-	}
-
-	return transaction, nil
+	}, nil
 }
 
 // GetAll retrieves all transactions ordered by date descending

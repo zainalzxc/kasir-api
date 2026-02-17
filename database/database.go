@@ -1,37 +1,32 @@
 package database
 
 import (
-	"database/sql" // Package standard Go untuk database SQL
-	"fmt"          // Package untuk print/format string
-	"log"          // Package untuk logging error
+	"database/sql"
+	"fmt"
+	"log"
+	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver pgx (better support untuk pooler)
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // InitDB menginisialisasi koneksi database menggunakan database/sql
 func InitDB(dsn string) *sql.DB {
-	// Log connection attempt
 	log.Println("🔌 Connecting to database...")
 
-	// Connect ke database PostgreSQL menggunakan pgx driver
-	// sql.Open tidak langsung connect, hanya prepare connection
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
-		// Kalau gagal, stop aplikasi dan tampilkan error
 		log.Fatal("❌ Failed to connect to database:", err)
 	}
 
-	// Set connection pool settings untuk compatibility dengan PostgreSQL pooler
-	// MaxOpenConns: maksimal koneksi yang bisa dibuka
-	// MaxIdleConns: maksimal koneksi idle yang disimpan
-	// Ini penting untuk pooler seperti Railway/Supabase
-	db.SetMaxOpenConns(10) // Batasi max connections
-	db.SetMaxIdleConns(5)  // Batasi idle connections
+	// Connection pool settings untuk performa optimal dengan cloud DB
+	db.SetMaxOpenConns(10)                 // Max koneksi aktif
+	db.SetMaxIdleConns(5)                  // Max koneksi idle (siap pakai)
+	db.SetConnMaxLifetime(5 * time.Minute) // Recycle koneksi setiap 5 menit
+	db.SetConnMaxIdleTime(2 * time.Minute) // Tutup koneksi idle > 2 menit
 
-	// Test koneksi dengan Ping (ini yang benar-benar connect)
+	// Test koneksi dengan Ping
 	err = db.Ping()
 	if err != nil {
-		// Kalau ping gagal, berarti database tidak bisa diakses
 		log.Fatal("❌ Failed to ping database:", err)
 	}
 
@@ -39,17 +34,11 @@ func InitDB(dsn string) *sql.DB {
 	createTables(db)
 
 	fmt.Println("✅ Database connected successfully")
-	return db // Return pointer ke database connection
+	return db
 }
 
-// createTables membuat table products, categories, transactions, dan transaction_details jika belum ada
+// createTables membuat table dasar jika belum ada
 func createTables(db *sql.DB) {
-	// SQL untuk create table products
-	// SERIAL = auto-increment integer
-	// PRIMARY KEY = unique identifier
-	// VARCHAR(255) = string maksimal 255 karakter
-	// INTEGER = angka bulat
-	// NOT NULL = field wajib diisi
 	productsTable := `
 	CREATE TABLE IF NOT EXISTS products (
 		id SERIAL PRIMARY KEY,
@@ -58,15 +47,11 @@ func createTables(db *sql.DB) {
 		stok INTEGER NOT NULL
 	)`
 
-	// Execute SQL query untuk create table
 	_, err := db.Exec(productsTable)
 	if err != nil {
-		// Kalau gagal create table, stop aplikasi
 		log.Fatal("❌ Failed to create products table:", err)
 	}
 
-	// SQL untuk create table categories
-	// TEXT = string panjang (untuk description)
 	categoriesTable := `
 	CREATE TABLE IF NOT EXISTS categories (
 		id SERIAL PRIMARY KEY,
@@ -74,17 +59,11 @@ func createTables(db *sql.DB) {
 		description TEXT
 	)`
 
-	// Execute SQL query untuk create table categories
 	_, err = db.Exec(categoriesTable)
 	if err != nil {
-		// Kalau gagal create table, stop aplikasi
 		log.Fatal("❌ Failed to create categories table:", err)
 	}
 
-	// SQL untuk create table transactions
-	// DECIMAL(10, 2) = angka desimal dengan 10 digit total, 2 digit di belakang koma
-	// TIMESTAMP = tanggal dan waktu
-	// DEFAULT CURRENT_TIMESTAMP = otomatis diisi dengan waktu sekarang
 	transactionsTable := `
 	CREATE TABLE IF NOT EXISTS transactions (
 		id SERIAL PRIMARY KEY,
@@ -92,16 +71,11 @@ func createTables(db *sql.DB) {
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	)`
 
-	// Execute SQL query untuk create table transactions
 	_, err = db.Exec(transactionsTable)
 	if err != nil {
-		// Kalau gagal create table, stop aplikasi
 		log.Fatal("❌ Failed to create transactions table:", err)
 	}
 
-	// SQL untuk create table transaction_details
-	// REFERENCES = foreign key ke table lain
-	// ON DELETE CASCADE = jika transaction dihapus, detail juga ikut terhapus
 	transactionDetailsTable := `
 	CREATE TABLE IF NOT EXISTS transaction_details (
 		id SERIAL PRIMARY KEY,
@@ -113,14 +87,11 @@ func createTables(db *sql.DB) {
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	)`
 
-	// Execute SQL query untuk create table transaction_details
 	_, err = db.Exec(transactionDetailsTable)
 	if err != nil {
-		// Kalau gagal create table, stop aplikasi
 		log.Fatal("❌ Failed to create transaction_details table:", err)
 	}
 
-	// Create indexes untuk mempercepat query
 	indexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_transaction_details_transaction_id ON transaction_details(transaction_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_transaction_details_product_id ON transaction_details(product_id)`,

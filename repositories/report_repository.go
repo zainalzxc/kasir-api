@@ -53,21 +53,33 @@ func (r *ReportRepository) GetSalesReportByDateRange(startDate, endDate time.Tim
 func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Time) (*models.SalesReport, error) {
 	var report models.SalesReport
 
-	// Query 1: Total revenue, transaksi, items terjual, dan profit kotor
+	// Query 1A: Total revenue dan total transaksi (dari transactions saja, TANPA JOIN)
+	// Ini menghindari duplikasi row akibat JOIN ke transaction_details
 	queryRevenue := `
 		SELECT 
-			COALESCE(SUM(t.total_amount), 0) as total_revenue,
-			COUNT(DISTINCT t.id) as total_transaksi,
-			COALESCE(SUM(td.quantity), 0) as total_items_sold,
-			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, td.price) * td.quantity)), 0) as total_profit
-		FROM transactions t
-		LEFT JOIN transaction_details td ON t.id = td.transaction_id
-		WHERE t.created_at BETWEEN $1 AND $2
+			COALESCE(SUM(total_amount), 0) as total_revenue,
+			COUNT(*) as total_transaksi
+		FROM transactions
+		WHERE created_at BETWEEN $1 AND $2
 	`
-
 	err := r.db.QueryRow(queryRevenue, startDate, endDate).Scan(
 		&report.TotalRevenue,
 		&report.TotalTransaksi,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Query 1B: Total items terjual dan profit (dari transaction_details, TANPA duplikasi)
+	queryItems := `
+		SELECT 
+			COALESCE(SUM(td.quantity), 0) as total_items_sold,
+			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, td.price) * td.quantity)), 0) as total_profit
+		FROM transaction_details td
+		JOIN transactions t ON td.transaction_id = t.id
+		WHERE t.created_at BETWEEN $1 AND $2
+	`
+	err = r.db.QueryRow(queryItems, startDate, endDate).Scan(
 		&report.TotalItemsSold,
 		&report.TotalProfit,
 	)
@@ -158,11 +170,11 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 	query := `
 		SELECT 
 			TO_CHAR(DATE_TRUNC($1, t.created_at), $2) as period,
-			COALESCE(SUM(t.total_amount), 0) as total_sales,
+			COALESCE(SUM(td.subtotal), 0) as total_sales,
 			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, 0) * td.quantity)), 0) as total_profit,
 			COUNT(DISTINCT t.id) as transaction_count
-		FROM transactions t
-		LEFT JOIN transaction_details td ON t.id = td.transaction_id
+		FROM transaction_details td
+		JOIN transactions t ON td.transaction_id = t.id
 		WHERE t.created_at BETWEEN $3 AND $4
 		GROUP BY 1
 		ORDER BY 1 ASC

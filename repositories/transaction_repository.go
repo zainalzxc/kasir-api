@@ -341,9 +341,8 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 // GetAll retrieves all transactions ordered by date descending
 // Fungsi ini mengambil semua data transaksi untuk history, termasuk profit per transaksi
 func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
-	// Query yang menghitung profit dan total items per transaksi
-	// Profit = total_amount - SUM(harga_beli * quantity)
-	// Jika harga_beli NULL, fallback ke price (profit = 0)
+	// Profit = total_amount (nett revenue) - HPP
+	// Subquery HPP per transaksi untuk hindari duplikasi
 	query := `
 		SELECT 
 			t.id, 
@@ -353,11 +352,17 @@ func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
 			COALESCE(t.payment_amount, 0) as payment_amount,
 			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
-			COALESCE(SUM(td.quantity), 0) as total_items,
-			t.total_amount - COALESCE(SUM(COALESCE(td.harga_beli, td.price) * td.quantity), 0) as profit
+			COALESCE(hpp.total_qty, 0) as total_items,
+			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit
 		FROM transactions t
-		LEFT JOIN transaction_details td ON t.id = td.transaction_id
-		GROUP BY t.id, t.total_amount, t.discount_id, t.discount_amount, t.payment_amount, t.change_amount, t.created_at
+		LEFT JOIN (
+			SELECT 
+				td.transaction_id,
+				SUM(td.quantity) as total_qty,
+				SUM(COALESCE(td.harga_beli, 0) * td.quantity) as total_hpp
+			FROM transaction_details td
+			GROUP BY td.transaction_id
+		) hpp ON hpp.transaction_id = t.id
 		ORDER BY t.created_at DESC
 	`
 
@@ -401,12 +406,18 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time) ([]
 			COALESCE(t.payment_amount, 0) as payment_amount,
 			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
-			COALESCE(SUM(td.quantity), 0) as total_items,
-			t.total_amount - COALESCE(SUM(COALESCE(td.harga_beli, td.price) * td.quantity), 0) as profit
+			COALESCE(hpp.total_qty, 0) as total_items,
+			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit
 		FROM transactions t
-		LEFT JOIN transaction_details td ON t.id = td.transaction_id
+		LEFT JOIN (
+			SELECT 
+				td.transaction_id,
+				SUM(td.quantity) as total_qty,
+				SUM(COALESCE(td.harga_beli, 0) * td.quantity) as total_hpp
+			FROM transaction_details td
+			GROUP BY td.transaction_id
+		) hpp ON hpp.transaction_id = t.id
 		WHERE t.created_at BETWEEN $1 AND $2
-		GROUP BY t.id, t.total_amount, t.discount_id, t.discount_amount, t.payment_amount, t.change_amount, t.created_at
 		ORDER BY t.created_at DESC
 	`
 
@@ -448,12 +459,18 @@ func (r *TransactionRepository) GetByID(id int) (*models.TransactionWithItems, e
 			COALESCE(t.payment_amount, 0) as payment_amount,
 			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
-			COALESCE(SUM(td.quantity), 0) as total_items,
-			t.total_amount - COALESCE(SUM(COALESCE(td.harga_beli, td.price) * td.quantity), 0) as profit
+			COALESCE(hpp.total_qty, 0) as total_items,
+			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit
 		FROM transactions t
-		LEFT JOIN transaction_details td ON t.id = td.transaction_id
+		LEFT JOIN (
+			SELECT 
+				td.transaction_id,
+				SUM(td.quantity) as total_qty,
+				SUM(COALESCE(td.harga_beli, 0) * td.quantity) as total_hpp
+			FROM transaction_details td
+			GROUP BY td.transaction_id
+		) hpp ON hpp.transaction_id = t.id
 		WHERE t.id = $1
-		GROUP BY t.id, t.total_amount, t.discount_amount, t.payment_amount, t.change_amount, t.created_at
 	`
 
 	var result models.TransactionWithItems

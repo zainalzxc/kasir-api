@@ -215,11 +215,17 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 	}
 
 	// ─── STEP 5: Process Global Discount (if any) ───
+	// Catatan alur diskon:
+	// - totalAmount   = jumlah subtotal per item (sudah dikurangi diskon per-item)
+	// - totalDiscount = akumulasi diskon per-item yang sudah dihitung di STEP 3
+	// - req.DiscountAmount (root) = total diskon keseluruhan dari frontend (INFORMASI SAJA,
+	//   sudah termasuk diskon per-item → JANGAN dikurangi lagi dari totalAmount)
+	// - globalDiscountAmount = diskon tambahan dari tabel discounts (via DiscountID)
 	var usedDiscountID *int
 	var globalDiscountAmount float64
 
 	if req.DiscountID != nil {
-		// Diskon global dari tabel discounts (berdasarkan ID)
+		// Diskon global dari tabel discounts (berdasarkan ID) — ini diskon TAMBAHAN
 		var d models.Discount
 		var isValid bool
 		err = tx.QueryRow(`
@@ -249,17 +255,20 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 			globalDiscountAmount = totalAmount
 		}
 		usedDiscountID = req.DiscountID
-	} else if req.DiscountAmount > 0 {
-		// Diskon total langsung dari frontend (tanpa DiscountID)
-		globalDiscountAmount = req.DiscountAmount
 	}
+	// req.DiscountAmount TIDAK dikurangi lagi — diskon per-item sudah masuk
+	// ke totalAmount via pengurangan subtotal di STEP 3.
 
+	// finalTotal = total setelah semua diskon
+	// Jika ada DiscountID (diskon global tambahan), kurangi dari totalAmount.
+	// Jika tidak, totalAmount sudah bersih.
 	finalTotal := totalAmount - globalDiscountAmount
 	if finalTotal < 0 {
 		finalTotal = 0
 	}
 	totalDiscount += globalDiscountAmount
 
+	// change_amount = uang bayar - total yang harus dibayar (setelah SEMUA diskon)
 	paymentAmount := req.PaymentAmount
 	changeAmount := 0.0
 	if paymentAmount > 0 {
@@ -270,10 +279,18 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 	}
 
 	// ─── STEP 6: Insert transaction header ───
+	// Gunakan req.DiscountAmount sebagai discount_amount yang disimpan ke DB
+	// (total diskon keseluruhan dari frontend, sudah include diskon per-item).
+	// Jika frontend tidak mengirim req.DiscountAmount, fallback ke totalDiscount internal.
+	savedDiscountAmount := totalDiscount
+	if req.DiscountAmount > 0 {
+		savedDiscountAmount = req.DiscountAmount
+	}
+
 	var transactionID int
 	err = tx.QueryRow(
 		"INSERT INTO transactions (total_amount, discount_id, discount_amount, payment_amount, change_amount) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-		finalTotal, usedDiscountID, totalDiscount, paymentAmount, changeAmount,
+		finalTotal, usedDiscountID, savedDiscountAmount, paymentAmount, changeAmount,
 	).Scan(&transactionID)
 	if err != nil {
 		return nil, err

@@ -53,11 +53,11 @@ func (r *ReportRepository) GetSalesReportByDateRange(startDate, endDate time.Tim
 func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Time) (*models.SalesReport, error) {
 	var report models.SalesReport
 
-	// Query 1A: Total revenue dan total transaksi (dari transactions saja, TANPA JOIN)
-	// Ini menghindari duplikasi row akibat JOIN ke transaction_details
+	// Query 1A: Total revenue (nett) dan total transaksi
+	// Revenue nett = total_amount - discount_amount (tx-level discount)
 	queryRevenue := `
 		SELECT 
-			COALESCE(SUM(total_amount), 0) as total_revenue,
+			COALESCE(SUM(total_amount - COALESCE(discount_amount, 0)), 0) as total_revenue,
 			COUNT(*) as total_transaksi
 		FROM transactions
 		WHERE created_at BETWEEN $1 AND $2
@@ -71,12 +71,12 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 	}
 
 	// Query 1B: Total items terjual dan profit
-	// Profit = t.total_amount (revenue nett setelah SEMUA diskon) - HPP
-	// Subquery: hitung HPP & qty per transaksi dulu untuk hindari duplikasi
+	// Profit = (total_amount - discount_amount) - HPP
+	// total_amount = setelah diskon item, discount_amount = diskon tx terpisah
 	queryItems := `
 		SELECT 
 			COALESCE(SUM(hpp.total_qty), 0) as total_items_sold,
-			COALESCE(SUM(t.total_amount) - SUM(hpp.total_hpp), 0) as total_profit
+			COALESCE(SUM(t.total_amount - COALESCE(t.discount_amount, 0)) - SUM(hpp.total_hpp), 0) as total_profit
 		FROM transactions t
 		JOIN (
 			SELECT 
@@ -190,8 +190,8 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 	query := `
 		SELECT 
 			TO_CHAR(DATE_TRUNC($1, t.created_at), $2) as period,
-			COALESCE(SUM(t.total_amount), 0) as total_sales,
-			COALESCE(SUM(t.total_amount) - SUM(hpp.total_hpp), 0) as total_profit,
+			COALESCE(SUM(t.total_amount - COALESCE(t.discount_amount, 0)), 0) as total_sales,
+			COALESCE(SUM(t.total_amount - COALESCE(t.discount_amount, 0)) - SUM(hpp.total_hpp), 0) as total_profit,
 			COUNT(DISTINCT t.id) as transaction_count
 		FROM transactions t
 		JOIN (

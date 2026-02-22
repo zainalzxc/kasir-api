@@ -341,7 +341,9 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 // GetAll retrieves all transactions ordered by date descending
 // Fungsi ini mengambil semua data transaksi untuk history, termasuk profit per transaksi
 func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
-	// Profit = total_amount (nett revenue) - HPP
+	// Profit = (total_amount - discount_amount) - HPP
+	// total_amount = total setelah diskon item
+	// discount_amount = diskon transaksi (terpisah, perlu dikurangi)
 	// Subquery HPP per transaksi untuk hindari duplikasi
 	query := `
 		SELECT 
@@ -353,7 +355,7 @@ func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
 			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
 			COALESCE(hpp.total_qty, 0) as total_items,
-			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit
+			(t.total_amount - COALESCE(t.discount_amount, 0)) - COALESCE(hpp.total_hpp, 0) as profit
 		FROM transactions t
 		LEFT JOIN (
 			SELECT 
@@ -407,7 +409,7 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time) ([]
 			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
 			COALESCE(hpp.total_qty, 0) as total_items,
-			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit
+			(t.total_amount - COALESCE(t.discount_amount, 0)) - COALESCE(hpp.total_hpp, 0) as profit
 		FROM transactions t
 		LEFT JOIN (
 			SELECT 
@@ -460,7 +462,7 @@ func (r *TransactionRepository) GetByID(id int) (*models.TransactionWithItems, e
 			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
 			COALESCE(hpp.total_qty, 0) as total_items,
-			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit
+			(t.total_amount - COALESCE(t.discount_amount, 0)) - COALESCE(hpp.total_hpp, 0) as profit
 		FROM transactions t
 		LEFT JOIN (
 			SELECT 

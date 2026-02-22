@@ -17,15 +17,18 @@ type Transaction struct {
 
 // TransactionDetail represents a transaction detail item
 type TransactionDetail struct {
-	ID            int       `json:"id"`
-	TransactionID int       `json:"transaction_id"`
-	ProductID     int       `json:"product_id"`
-	ProductName   string    `json:"product_name"` // Nama produk (dari JOIN)
-	Quantity      int       `json:"quantity"`
-	Price         float64   `json:"price"`
-	Subtotal      float64   `json:"subtotal"`
-	HargaBeli     float64   `json:"harga_beli,omitempty"` // Snapshot harga beli
-	CreatedAt     time.Time `json:"created_at,omitempty"`
+	ID             int       `json:"id"`
+	TransactionID  int       `json:"transaction_id"`
+	ProductID      int       `json:"product_id"`
+	ProductName    string    `json:"product_name"` // Nama produk (dari JOIN)
+	Quantity       int       `json:"quantity"`
+	Price          float64   `json:"price"`
+	Subtotal       float64   `json:"subtotal"`
+	DiscountType   string    `json:"discount_type,omitempty"`   // Tipe diskon item: percentage / fixed
+	DiscountValue  float64   `json:"discount_value,omitempty"`  // Nilai diskon (persen atau nominal)
+	DiscountAmount float64   `json:"discount_amount,omitempty"` // Total potongan nominal untuk item ini
+	HargaBeli      float64   `json:"harga_beli,omitempty"`      // Snapshot harga beli
+	CreatedAt      time.Time `json:"created_at,omitempty"`
 }
 
 // TransactionWithItems represents full transaction detail with items
@@ -44,13 +47,18 @@ type TransactionWithItems struct {
 
 // CheckoutItem represents an item in checkout request
 type CheckoutItem struct {
-	ProductID int `json:"product_id"`
-	Quantity  int `json:"quantity"`
+	ProductID      int     `json:"product_id"`
+	Quantity       int     `json:"quantity"`
+	Price          float64 `json:"price"`           // Harga satuan dari frontend (opsional, fallback ke DB)
+	DiscountType   string  `json:"discount_type"`   // "percentage" atau "fixed"
+	DiscountValue  float64 `json:"discount_value"`  // Nilai diskon (persen atau nominal)
+	DiscountAmount float64 `json:"discount_amount"` // Total potongan nominal sudah dihitung frontend
 }
 
 // CheckoutRequest represents the checkout request body
 type CheckoutRequest struct {
-	Items         []CheckoutItem `json:"items"`
-	DiscountID    *int           `json:"discount_id"`    // Optional: ID diskon
-	PaymentAmount float64        `json:"payment_amount"` // Uang bayar customer
+	Items          []CheckoutItem `json:"items"`
+	DiscountID     *int           `json:"discount_id"`     // Optional: ID diskon global
+	DiscountAmount float64        `json:"discount_amount"` // Total diskon transaksi (dari frontend)
+	PaymentAmount  float64        `json:"payment_amount"`  // Uang bayar customer
 }

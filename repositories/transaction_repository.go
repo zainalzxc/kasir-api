@@ -119,7 +119,9 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 	}
 	discountRows.Close()
 
-	// ─── STEP 3: Process items in-memory (TANPA query tambahan) ───
+	// ─── STEP 3: Process items in-memory ───
+	// Prioritas: gunakan diskon dari frontend jika ada (discount_amount > 0),
+	// fallback ke diskon dari DB jika tidak ada diskon frontend.
 	var totalAmount float64
 	var totalDiscount float64
 	details := make([]models.TransactionDetail, 0, len(req.Items))
@@ -127,40 +129,68 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 	for _, item := range req.Items {
 		p := productMap[item.ProductID]
 
-		var itemDiscountPerUnit float64
-		disc, found := productDiscounts[item.ProductID]
-		if !found && p.CategoryID.Valid {
-			disc, _ = categoryDiscounts[int(p.CategoryID.Int64)]
+		// Tentukan harga satuan: gunakan dari frontend jika dikirim, fallback ke DB
+		unitPrice := p.Price
+		if item.Price > 0 {
+			unitPrice = item.Price
 		}
-		if disc != nil {
-			if disc.Type == "PERCENTAGE" {
-				itemDiscountPerUnit = p.Price * (disc.Value / 100)
-			} else {
-				itemDiscountPerUnit = disc.Value
+
+		var discountAmount float64
+		var discountType string
+		var discountValue float64
+
+		if item.DiscountAmount > 0 {
+			// Gunakan diskon yang sudah dihitung frontend
+			discountAmount = item.DiscountAmount
+			discountType = item.DiscountType
+			discountValue = item.DiscountValue
+		} else {
+			// Fallback: cari diskon dari DB (per produk / kategori)
+			var itemDiscountPerUnit float64
+			disc, found := productDiscounts[item.ProductID]
+			if !found && p.CategoryID.Valid {
+				disc, _ = categoryDiscounts[int(p.CategoryID.Int64)]
 			}
-			if itemDiscountPerUnit > p.Price {
-				itemDiscountPerUnit = p.Price
+			if disc != nil {
+				if disc.Type == "PERCENTAGE" {
+					itemDiscountPerUnit = unitPrice * (disc.Value / 100)
+					discountType = "percentage"
+				} else {
+					itemDiscountPerUnit = disc.Value
+					discountType = "fixed"
+				}
+				if itemDiscountPerUnit > unitPrice {
+					itemDiscountPerUnit = unitPrice
+				}
+				discountValue = disc.Value
+				discountAmount = itemDiscountPerUnit * float64(item.Quantity)
 			}
 		}
 
-		priceAfterDisc := p.Price - itemDiscountPerUnit
-		subtotal := priceAfterDisc * float64(item.Quantity)
+		// Subtotal = (harga × qty) - total diskon item
+		subtotal := (unitPrice * float64(item.Quantity)) - discountAmount
+		if subtotal < 0 {
+			subtotal = 0
+		}
 		totalAmount += subtotal
-		totalDiscount += itemDiscountPerUnit * float64(item.Quantity)
+		totalDiscount += discountAmount
 
 		var hargaBeliSnapshot float64
 		if p.HargaBeli.Valid {
 			hargaBeliSnapshot = p.HargaBeli.Float64
 		} else {
-			hargaBeliSnapshot = p.Price
+			hargaBeliSnapshot = unitPrice
 		}
 
 		details = append(details, models.TransactionDetail{
-			ProductID: item.ProductID,
-			Quantity:  item.Quantity,
-			Price:     p.Price,
-			Subtotal:  subtotal,
-			HargaBeli: hargaBeliSnapshot,
+			ProductID:      item.ProductID,
+			Quantity:       item.Quantity,
+			Price:          unitPrice,
+			Subtotal:       subtotal,
+			DiscountType:   discountType,
+			DiscountValue:  discountValue,
+			DiscountAmount: discountAmount,
+			HargaBeli:      hargaBeliSnapshot,
 		})
 	}
 
@@ -189,6 +219,7 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 	var globalDiscountAmount float64
 
 	if req.DiscountID != nil {
+		// Diskon global dari tabel discounts (berdasarkan ID)
 		var d models.Discount
 		var isValid bool
 		err = tx.QueryRow(`
@@ -218,9 +249,15 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 			globalDiscountAmount = totalAmount
 		}
 		usedDiscountID = req.DiscountID
+	} else if req.DiscountAmount > 0 {
+		// Diskon total langsung dari frontend (tanpa DiscountID)
+		globalDiscountAmount = req.DiscountAmount
 	}
 
 	finalTotal := totalAmount - globalDiscountAmount
+	if finalTotal < 0 {
+		finalTotal = 0
+	}
 	totalDiscount += globalDiscountAmount
 
 	paymentAmount := req.PaymentAmount
@@ -242,17 +279,25 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		return nil, err
 	}
 
-	// ─── STEP 7: Batch insert details ───
+	// ─── STEP 7: Batch insert details (termasuk discount per item) ───
 	if len(details) > 0 {
-		query := "INSERT INTO transaction_details (transaction_id, product_id, quantity, price, subtotal, harga_beli) VALUES "
-		values := make([]interface{}, 0, len(details)*6)
+		query := "INSERT INTO transaction_details (transaction_id, product_id, quantity, price, subtotal, harga_beli, discount_type, discount_value, discount_amount) VALUES "
+		values := make([]interface{}, 0, len(details)*9)
 		for i, detail := range details {
 			if i > 0 {
 				query += ", "
 			}
-			query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d)",
-				i*6+1, i*6+2, i*6+3, i*6+4, i*6+5, i*6+6)
-			values = append(values, transactionID, detail.ProductID, detail.Quantity, detail.Price, detail.Subtotal, detail.HargaBeli)
+			query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+				i*9+1, i*9+2, i*9+3, i*9+4, i*9+5, i*9+6, i*9+7, i*9+8, i*9+9)
+			// Simpan NULL jika discount_type kosong
+			var discType interface{}
+			if detail.DiscountType != "" {
+				discType = detail.DiscountType
+			}
+			values = append(values,
+				transactionID, detail.ProductID, detail.Quantity, detail.Price, detail.Subtotal,
+				detail.HargaBeli, discType, detail.DiscountValue, detail.DiscountAmount,
+			)
 		}
 		_, err = tx.Exec(query, values...)
 		if err != nil {
@@ -419,7 +464,10 @@ func (r *TransactionRepository) GetByID(id int) (*models.TransactionWithItems, e
 			COALESCE(p.nama, 'Produk Dihapus') as product_name,
 			td.quantity,
 			td.price,
-			td.subtotal
+			td.subtotal,
+			COALESCE(td.discount_type, '') as discount_type,
+			COALESCE(td.discount_value, 0) as discount_value,
+			COALESCE(td.discount_amount, 0) as discount_amount
 		FROM transaction_details td
 		LEFT JOIN products p ON td.product_id = p.id
 		WHERE td.transaction_id = $1
@@ -435,7 +483,11 @@ func (r *TransactionRepository) GetByID(id int) (*models.TransactionWithItems, e
 	var items []models.TransactionDetail
 	for rows.Next() {
 		var item models.TransactionDetail
-		err := rows.Scan(&item.ID, &item.ProductID, &item.ProductName, &item.Quantity, &item.Price, &item.Subtotal)
+		err := rows.Scan(
+			&item.ID, &item.ProductID, &item.ProductName,
+			&item.Quantity, &item.Price, &item.Subtotal,
+			&item.DiscountType, &item.DiscountValue, &item.DiscountAmount,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("gagal membaca detail item: %w", err)
 		}

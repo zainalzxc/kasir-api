@@ -70,13 +70,22 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		return nil, err
 	}
 
-	// Query 1B: Total items terjual dan profit (dari transaction_details, TANPA duplikasi)
+	// Query 1B: Total items terjual dan profit
+	// Profit = t.total_amount (revenue nett setelah SEMUA diskon) - HPP
+	// Subquery: hitung HPP & qty per transaksi dulu untuk hindari duplikasi
 	queryItems := `
 		SELECT 
-			COALESCE(SUM(td.quantity), 0) as total_items_sold,
-			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, td.price) * td.quantity)), 0) as total_profit
-		FROM transaction_details td
-		JOIN transactions t ON td.transaction_id = t.id
+			COALESCE(SUM(hpp.total_qty), 0) as total_items_sold,
+			COALESCE(SUM(t.total_amount) - SUM(hpp.total_hpp), 0) as total_profit
+		FROM transactions t
+		JOIN (
+			SELECT 
+				td.transaction_id,
+				SUM(td.quantity) as total_qty,
+				SUM(COALESCE(td.harga_beli, td.price) * td.quantity) as total_hpp
+			FROM transaction_details td
+			GROUP BY td.transaction_id
+		) hpp ON hpp.transaction_id = t.id
 		WHERE t.created_at BETWEEN $1 AND $2
 	`
 	err = r.db.QueryRow(queryItems, startDate, endDate).Scan(
@@ -108,12 +117,23 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 	report.LabaBersih = report.TotalRevenue - report.TotalPengeluaran
 
 	// Query 3: Semua produk terjual (sorted by total_sales DESC)
+	// Profit per produk dihitung dengan distribusi proporsional tx-level discount:
+	//   item_share = (td.subtotal / SUM(subtotal per transaksi)) × tx.discount_amount
+	//   item_profit = td.subtotal - (harga_beli × qty) - item_share
 	queryProducts := `
 		SELECT 
 			p.nama as nama_produk,
 			SUM(td.quantity) as jumlah,
-			COALESCE(SUM(td.quantity * td.price), 0) as total_sales,
-			COALESCE(SUM(td.quantity * (td.price - COALESCE(td.harga_beli, 0))), 0) as total_profit
+			COALESCE(SUM(td.subtotal), 0) as total_sales,
+			COALESCE(SUM(
+				td.subtotal
+				- (COALESCE(td.harga_beli, 0) * td.quantity)
+				- (
+					td.subtotal
+					/ NULLIF((SELECT SUM(s.subtotal) FROM transaction_details s WHERE s.transaction_id = td.transaction_id), 0)
+					* COALESCE(t.discount_amount - (SELECT COALESCE(SUM(s.discount_amount),0) FROM transaction_details s WHERE s.transaction_id = td.transaction_id), 0)
+				)
+			), 0) as total_profit
 		FROM transaction_details td
 		JOIN products p ON td.product_id = p.id
 		JOIN transactions t ON td.transaction_id = t.id
@@ -170,14 +190,20 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 	query := `
 		SELECT 
 			TO_CHAR(DATE_TRUNC($1, t.created_at), $2) as period,
-			COALESCE(SUM(td.subtotal), 0) as total_sales,
-			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, 0) * td.quantity)), 0) as total_profit,
+			COALESCE(SUM(t.total_amount), 0) as total_sales,
+			COALESCE(SUM(t.total_amount) - SUM(hpp.total_hpp), 0) as total_profit,
 			COUNT(DISTINCT t.id) as transaction_count
-		FROM transaction_details td
-		JOIN transactions t ON td.transaction_id = t.id
+		FROM transactions t
+		JOIN (
+			SELECT 
+				td.transaction_id,
+				SUM(COALESCE(td.harga_beli, 0) * td.quantity) as total_hpp
+			FROM transaction_details td
+			GROUP BY td.transaction_id
+		) hpp ON hpp.transaction_id = t.id
 		WHERE t.created_at BETWEEN $3 AND $4
-		GROUP BY 1
-		ORDER BY 1 ASC
+		GROUP BY DATE_TRUNC($1, t.created_at)
+		ORDER BY DATE_TRUNC($1, t.created_at) ASC
 	`
 
 	rows, err := r.db.Query(query, truncateUnit, dateFormat, startDate, endDate)
@@ -201,12 +227,22 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 // GetTopProducts returns top selling products by quantity and by profit
 func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit int) ([]models.TopProduct, []models.TopProduct, error) {
 	// 1. Top by Quantity
+	// Profit per produk dihitung dengan distribusi proporsional tx-level discount:
+	//   item_profit = td.subtotal - (harga_beli × qty) - bagian_proporsional_tx_discount
 	queryQty := `
 		SELECT 
 			p.nama,
 			COALESCE(SUM(td.quantity), 0) as jumlah,
 			COALESCE(SUM(td.subtotal), 0) as total_sales,
-			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, 0) * td.quantity)), 0) as total_profit
+			COALESCE(SUM(
+				td.subtotal
+				- (COALESCE(td.harga_beli, 0) * td.quantity)
+				- (
+					td.subtotal
+					/ NULLIF((SELECT SUM(s.subtotal) FROM transaction_details s WHERE s.transaction_id = td.transaction_id), 0)
+					* COALESCE(t.discount_amount - (SELECT COALESCE(SUM(s.discount_amount),0) FROM transaction_details s WHERE s.transaction_id = td.transaction_id), 0)
+				)
+			), 0) as total_profit
 		FROM transaction_details td
 		JOIN products p ON td.product_id = p.id
 		JOIN transactions t ON td.transaction_id = t.id
@@ -237,7 +273,15 @@ func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit in
 			p.nama,
 			COALESCE(SUM(td.quantity), 0) as jumlah,
 			COALESCE(SUM(td.subtotal), 0) as total_sales,
-			COALESCE(SUM(td.subtotal - (COALESCE(td.harga_beli, 0) * td.quantity)), 0) as total_profit
+			COALESCE(SUM(
+				td.subtotal
+				- (COALESCE(td.harga_beli, 0) * td.quantity)
+				- (
+					td.subtotal
+					/ NULLIF((SELECT SUM(s.subtotal) FROM transaction_details s WHERE s.transaction_id = td.transaction_id), 0)
+					* COALESCE(t.discount_amount - (SELECT COALESCE(SUM(s.discount_amount),0) FROM transaction_details s WHERE s.transaction_id = td.transaction_id), 0)
+				)
+			), 0) as total_profit
 		FROM transaction_details td
 		JOIN products p ON td.product_id = p.id
 		JOIN transactions t ON td.transaction_id = t.id

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"kasir-api/models"
+	"log"
 	"time"
 )
 
@@ -104,13 +105,17 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 			discountRows.Close()
 			return nil, scanErr
 		}
+		// Jika diskon punya KEDUA product_id DAN category_id → data tidak valid, skip
+		if productID.Valid && categoryID.Valid {
+			log.Printf("⚠️ Diskon ID %d punya product_id DAN category_id sekaligus — diskip (data tidak valid)", id)
+			continue
+		}
 		if productID.Valid {
 			pid := int(productID.Int64)
 			if _, exists := productDiscounts[pid]; !exists {
 				productDiscounts[pid] = &discInfo{Type: dType, Value: dValue}
 			}
-		}
-		if categoryID.Valid {
+		} else if categoryID.Valid {
 			cid := int(categoryID.Int64)
 			if _, exists := categoryDiscounts[cid]; !exists {
 				categoryDiscounts[cid] = &discInfo{Type: dType, Value: dValue}
@@ -129,10 +134,12 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 	for _, item := range req.Items {
 		p := productMap[item.ProductID]
 
-		// Tentukan harga satuan: gunakan dari frontend jika dikirim, fallback ke DB
+		// Harga satuan SELALU dari database — jangan izinkan frontend override
+		// untuk mencegah harga naik/turun tanpa sepengetahuan admin
 		unitPrice := p.Price
-		if item.Price > 0 {
-			unitPrice = item.Price
+		if item.Price > 0 && item.Price != p.Price {
+			log.Printf("⚠️ Produk ID %d: frontend kirim harga %.0f, DB harga %.0f — gunakan harga DB",
+				item.ProductID, item.Price, p.Price)
 		}
 
 		var discountAmount float64

@@ -2,15 +2,17 @@ package models
 
 // Product adalah struct untuk data produk
 type Product struct {
-	ID         int       `json:"id" db:"id"`
-	Nama       string    `json:"nama" db:"nama"`
-	Harga      float64   `json:"harga" db:"harga"`                     // Harga jual
-	HargaBeli  *float64  `json:"harga_beli,omitempty" db:"harga_beli"` // Harga beli/modal (nullable)
-	Stok       int       `json:"stok" db:"stok"`
-	CategoryID *int      `json:"category_id,omitempty" db:"category_id"` // Foreign key ke categories (nullable)
-	CreatedBy  *int      `json:"created_by,omitempty" db:"created_by"`   // User ID yang menambahkan produk
-	Category   *Category `json:"category,omitempty" db:"-"`              // Untuk hasil JOIN (tidak disimpan di DB)
-	Margin     *float64  `json:"margin,omitempty" db:"-"`                // Margin keuntungan % (calculated field)
+	ID                   int       `json:"id" db:"id"`
+	Nama                 string    `json:"nama" db:"nama"`
+	Harga                float64   `json:"harga" db:"harga"`                     // Harga jual
+	HargaBeli            *float64  `json:"harga_beli,omitempty" db:"harga_beli"` // Harga beli/modal (nullable)
+	Stok                 int       `json:"stok" db:"stok"`
+	CategoryID           *int      `json:"category_id,omitempty" db:"category_id"`                       // Foreign key ke categories (nullable)
+	DefaultDiscountType  *string   `json:"default_discount_type,omitempty" db:"default_discount_type"`   // "percentage" atau "fixed" (nullable)
+	DefaultDiscountValue *float64  `json:"default_discount_value,omitempty" db:"default_discount_value"` // Nilai diskon default (nullable)
+	CreatedBy            *int      `json:"created_by,omitempty" db:"created_by"`                         // User ID yang menambahkan produk
+	Category             *Category `json:"category,omitempty" db:"-"`                                    // Untuk hasil JOIN (tidak disimpan di DB)
+	Margin               *float64  `json:"margin,omitempty" db:"-"`                                      // Margin keuntungan % (calculated field)
 }
 
 // CalculateMargin menghitung margin keuntungan dalam persen

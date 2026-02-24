@@ -34,6 +34,8 @@ func (r *ProductRepository) GetAll(searchName string, pagination *models.Paginat
 			p.stok, 
 			p.category_id,
 			p.harga_beli,
+			p.default_discount_type,
+			p.default_discount_value,
 			p.created_by,
 			c.id as category_id_full,
 			c.nama as category_name,
@@ -91,12 +93,14 @@ func (r *ProductRepository) GetAll(searchName string, pagination *models.Paginat
 
 	// Loop semua rows yang didapat dari database
 	for rows.Next() {
-		var product models.Product      // Buat variable product untuk setiap row
-		var categoryID sql.NullInt64    // Untuk handle NULL dari LEFT JOIN
-		var categoryName sql.NullString // Untuk handle NULL dari LEFT JOIN
-		var categoryDesc sql.NullString // Untuk handle NULL dari LEFT JOIN
-		var hargaBeli sql.NullFloat64   // Untuk handle NULL dari harga_beli
-		var createdBy sql.NullInt64     // Untuk handle NULL dari created_by
+		var product models.Product           // Buat variable product untuk setiap row
+		var categoryID sql.NullInt64         // Untuk handle NULL dari LEFT JOIN
+		var categoryName sql.NullString      // Untuk handle NULL dari LEFT JOIN
+		var categoryDesc sql.NullString      // Untuk handle NULL dari LEFT JOIN
+		var hargaBeli sql.NullFloat64        // Untuk handle NULL dari harga_beli
+		var defaultDiscType sql.NullString   // Untuk handle NULL dari default_discount_type
+		var defaultDiscValue sql.NullFloat64 // Untuk handle NULL dari default_discount_value
+		var createdBy sql.NullInt64          // Untuk handle NULL dari created_by
 
 		// Scan data dari row ke struct product
 		// Urutan harus sama dengan SELECT
@@ -107,6 +111,8 @@ func (r *ProductRepository) GetAll(searchName string, pagination *models.Paginat
 			&product.Stok,
 			&product.CategoryID,
 			&hargaBeli,
+			&defaultDiscType,
+			&defaultDiscValue,
 			&createdBy,
 			&categoryID,
 			&categoryName,
@@ -119,6 +125,14 @@ func (r *ProductRepository) GetAll(searchName string, pagination *models.Paginat
 		// Set harga_beli jika valid
 		if hargaBeli.Valid {
 			product.HargaBeli = &hargaBeli.Float64
+		}
+
+		// Set default discount jika valid
+		if defaultDiscType.Valid {
+			product.DefaultDiscountType = &defaultDiscType.String
+		}
+		if defaultDiscValue.Valid {
+			product.DefaultDiscountValue = &defaultDiscValue.Float64
 		}
 
 		// Set created_by jika valid
@@ -156,6 +170,8 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 			p.stok, 
 			p.category_id,
 			p.harga_beli,
+			p.default_discount_type,
+			p.default_discount_value,
 			p.created_by,
 			c.id as category_id_full,
 			c.nama as category_name,
@@ -168,12 +184,14 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 	// QueryRow untuk query yang return 1 row saja
 	row := r.db.QueryRow(query, id) // id akan replace $1
 
-	var product models.Product      // Buat variable untuk menampung hasil
-	var categoryID sql.NullInt64    // Untuk handle NULL dari LEFT JOIN
-	var categoryName sql.NullString // Untuk handle NULL dari LEFT JOIN
-	var categoryDesc sql.NullString // Untuk handle NULL dari LEFT JOIN
-	var hargaBeli sql.NullFloat64   // Untuk handle NULL dari harga_beli
-	var createdBy sql.NullInt64     // Untuk handle NULL dari created_by
+	var product models.Product           // Buat variable untuk menampung hasil
+	var categoryID sql.NullInt64         // Untuk handle NULL dari LEFT JOIN
+	var categoryName sql.NullString      // Untuk handle NULL dari LEFT JOIN
+	var categoryDesc sql.NullString      // Untuk handle NULL dari LEFT JOIN
+	var hargaBeli sql.NullFloat64        // Untuk handle NULL dari harga_beli
+	var defaultDiscType sql.NullString   // Untuk handle NULL dari default_discount_type
+	var defaultDiscValue sql.NullFloat64 // Untuk handle NULL dari default_discount_value
+	var createdBy sql.NullInt64          // Untuk handle NULL dari created_by
 
 	// Scan hasil query ke struct product
 	err := row.Scan(
@@ -183,6 +201,8 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 		&product.Stok,
 		&product.CategoryID,
 		&hargaBeli,
+		&defaultDiscType,
+		&defaultDiscValue,
 		&createdBy,
 		&categoryID,
 		&categoryName,
@@ -195,6 +215,14 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 	// Set harga_beli jika valid
 	if hargaBeli.Valid {
 		product.HargaBeli = &hargaBeli.Float64
+	}
+
+	// Set default discount jika valid
+	if defaultDiscType.Valid {
+		product.DefaultDiscountType = &defaultDiscType.String
+	}
+	if defaultDiscValue.Valid {
+		product.DefaultDiscountValue = &defaultDiscValue.Float64
 	}
 
 	// Set created_by jika valid
@@ -226,20 +254,22 @@ func (r *ProductRepository) Create(product *models.Product) error {
 	// - HargaBeli akan diupdate (EXCLUDED.harga_beli)
 	// Jika belum ada, akan insert produk baru
 	query := `
-		INSERT INTO products (nama, harga, stok, category_id, harga_beli, created_by) 
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO products (nama, harga, stok, category_id, harga_beli, created_by, default_discount_type, default_discount_value) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (nama) 
 		DO UPDATE SET 
 			harga = EXCLUDED.harga,
 			stok = products.stok + EXCLUDED.stok,
 			category_id = EXCLUDED.category_id,
-			harga_beli = EXCLUDED.harga_beli
+			harga_beli = EXCLUDED.harga_beli,
+			default_discount_type = EXCLUDED.default_discount_type,
+			default_discount_value = EXCLUDED.default_discount_value
 		RETURNING id, stok
 	`
 
 	// Execute query dan scan ID + stok terbaru yang di-return
 	// $1 = product.Nama, $2 = product.Harga, $3 = product.Stok, $4 = product.CategoryID
-	err := r.db.QueryRow(query, product.Nama, product.Harga, product.Stok, product.CategoryID, product.HargaBeli, product.CreatedBy).Scan(&product.ID, &product.Stok)
+	err := r.db.QueryRow(query, product.Nama, product.Harga, product.Stok, product.CategoryID, product.HargaBeli, product.CreatedBy, product.DefaultDiscountType, product.DefaultDiscountValue).Scan(&product.ID, &product.Stok)
 
 	return err // Return error (nil kalau sukses)
 }
@@ -248,11 +278,11 @@ func (r *ProductRepository) Create(product *models.Product) error {
 // Stok dikelola lewat pembelian (POST /api/purchases) dan penjualan (POST /api/checkout)
 // Harga beli dikelola lewat pembelian (POST /api/purchases)
 func (r *ProductRepository) Update(product *models.Product) error {
-	// SQL query untuk UPDATE — hanya nama, harga jual, dan category
+	// SQL query untuk UPDATE — nama, harga jual, kategori, dan diskon default
 	// Stok dan harga_beli TIDAK bisa diubah dari sini
-	query := "UPDATE products SET nama = $1, harga = $2, category_id = $3 WHERE id = $4"
+	query := "UPDATE products SET nama = $1, harga = $2, category_id = $3, default_discount_type = $4, default_discount_value = $5 WHERE id = $6"
 
-	_, err := r.db.Exec(query, product.Nama, product.Harga, product.CategoryID, product.ID)
+	_, err := r.db.Exec(query, product.Nama, product.Harga, product.CategoryID, product.DefaultDiscountType, product.DefaultDiscountValue, product.ID)
 
 	return err
 }

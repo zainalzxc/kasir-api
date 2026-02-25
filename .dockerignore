@@ -5,13 +5,14 @@ tools/
 .git
 .gitignore
 
-# Docs & configs
+# Docs
 docs/
-database/
-*.md
-*.json
-!go.mod
-!go.sum
+
+# SQL migration files (tidak perlu di runtime)
+database/*.sql
+database/*.md
+database/*.txt
+database/migrations/
 
 # IDE
 .vscode/
@@ -33,3 +34,11 @@ Thumbs.db
 # Scripts
 *.ps1
 *.sh
+
+# Postman
+*.postman_collection.json
+*.postman_environment.json
+
+# Markdown docs
+README.md
+API_CRUD_GUIDE.md

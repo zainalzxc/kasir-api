@@ -1,0 +1,35 @@
+# Tools (penyebab build error - multiple main())
+tools/
+
+# Git
+.git
+.gitignore
+
+# Docs & configs
+docs/
+database/
+*.md
+*.json
+!go.mod
+!go.sum
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.test
+*.out
+
+# Env files
+.env
+.env.*
+
+# Scripts
+*.ps1
+*.sh

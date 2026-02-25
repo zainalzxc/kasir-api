@@ -7,6 +7,7 @@ type Product struct {
 	Harga                float64   `json:"harga" db:"harga"`                     // Harga jual
 	HargaBeli            *float64  `json:"harga_beli,omitempty" db:"harga_beli"` // Harga beli/modal (nullable)
 	Stok                 int       `json:"stok" db:"stok"`
+	Barcode              *string   `json:"barcode,omitempty" db:"barcode"`                               // Barcode produk (nullable, unique)
 	CategoryID           *int      `json:"category_id,omitempty" db:"category_id"`                       // Foreign key ke categories (nullable)
 	DefaultDiscountType  *string   `json:"default_discount_type,omitempty" db:"default_discount_type"`   // "percentage" atau "fixed" (nullable)
 	DefaultDiscountValue *float64  `json:"default_discount_value,omitempty" db:"default_discount_value"` // Nilai diskon default (nullable)

@@ -23,7 +23,7 @@ func NewProductRepository(db *sql.DB) *ProductRepository {
 // Parameter searchName untuk filter by name (kosong = ambil semua)
 // Parameter pagination untuk limit dan offset
 // Return: products, total count, error
-func (r *ProductRepository) GetAll(searchName string, pagination *models.PaginationParams) ([]models.Product, int, error) {
+func (r *ProductRepository) GetAll(searchName string, searchBarcode string, pagination *models.PaginationParams) ([]models.Product, int, error) {
 	// SQL query dengan LEFT JOIN ke table categories
 	// LEFT JOIN = ambil semua products, meskipun tidak punya category
 	query := `
@@ -32,6 +32,7 @@ func (r *ProductRepository) GetAll(searchName string, pagination *models.Paginat
 			p.nama, 
 			p.harga, 
 			p.stok, 
+			p.barcode,
 			p.category_id,
 			p.harga_beli,
 			p.default_discount_type,
@@ -49,21 +50,34 @@ func (r *ProductRepository) GetAll(searchName string, pagination *models.Paginat
 
 	// Buat slice untuk menampung arguments query
 	var args []interface{}
+	var countArgs []interface{}
 	paramIndex := 1
+	countParamIndex := 1
+	hasWhere := false
 
-	// Jika searchName tidak kosong, tambahkan WHERE clause untuk filter
-	if searchName != "" {
-		query += " WHERE p.nama ILIKE $" + fmt.Sprint(paramIndex)
-		countQuery += " WHERE p.nama ILIKE $1"
-		// ILIKE = case-insensitive LIKE
-		// % hanya di akhir = search yang dimulai dengan searchName (prefix match)
-		args = append(args, searchName+"%")
+	// Filter by barcode (exact match, prioritas tertinggi)
+	if searchBarcode != "" {
+		query += fmt.Sprintf(" WHERE p.barcode = $%d", paramIndex)
+		countQuery += fmt.Sprintf(" WHERE p.barcode = $%d", countParamIndex)
+		args = append(args, searchBarcode)
+		countArgs = append(countArgs, searchBarcode)
 		paramIndex++
+		countParamIndex++
+		hasWhere = true
+	}
+
+	// Filter by name (prefix match)
+	if searchName != "" && !hasWhere {
+		query += fmt.Sprintf(" WHERE p.nama ILIKE $%d", paramIndex)
+		countQuery += fmt.Sprintf(" WHERE p.nama ILIKE $%d", countParamIndex)
+		args = append(args, searchName+"%")
+		countArgs = append(countArgs, searchName+"%")
+		paramIndex++
+		countParamIndex++
 	}
 
 	// Hitung total items untuk pagination metadata
 	var totalItems int
-	countArgs := args
 	if len(countArgs) == 0 {
 		countArgs = nil
 	}
@@ -98,6 +112,7 @@ func (r *ProductRepository) GetAll(searchName string, pagination *models.Paginat
 		var categoryName sql.NullString      // Untuk handle NULL dari LEFT JOIN
 		var categoryDesc sql.NullString      // Untuk handle NULL dari LEFT JOIN
 		var hargaBeli sql.NullFloat64        // Untuk handle NULL dari harga_beli
+		var barcode sql.NullString           // Untuk handle NULL dari barcode
 		var defaultDiscType sql.NullString   // Untuk handle NULL dari default_discount_type
 		var defaultDiscValue sql.NullFloat64 // Untuk handle NULL dari default_discount_value
 		var createdBy sql.NullInt64          // Untuk handle NULL dari created_by
@@ -109,6 +124,7 @@ func (r *ProductRepository) GetAll(searchName string, pagination *models.Paginat
 			&product.Nama,
 			&product.Harga,
 			&product.Stok,
+			&barcode,
 			&product.CategoryID,
 			&hargaBeli,
 			&defaultDiscType,
@@ -125,6 +141,11 @@ func (r *ProductRepository) GetAll(searchName string, pagination *models.Paginat
 		// Set harga_beli jika valid
 		if hargaBeli.Valid {
 			product.HargaBeli = &hargaBeli.Float64
+		}
+
+		// Set barcode jika valid
+		if barcode.Valid {
+			product.Barcode = &barcode.String
 		}
 
 		// Set default discount jika valid
@@ -168,6 +189,7 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 			p.nama, 
 			p.harga, 
 			p.stok, 
+			p.barcode,
 			p.category_id,
 			p.harga_beli,
 			p.default_discount_type,
@@ -189,6 +211,7 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 	var categoryName sql.NullString      // Untuk handle NULL dari LEFT JOIN
 	var categoryDesc sql.NullString      // Untuk handle NULL dari LEFT JOIN
 	var hargaBeli sql.NullFloat64        // Untuk handle NULL dari harga_beli
+	var barcode sql.NullString           // Untuk handle NULL dari barcode
 	var defaultDiscType sql.NullString   // Untuk handle NULL dari default_discount_type
 	var defaultDiscValue sql.NullFloat64 // Untuk handle NULL dari default_discount_value
 	var createdBy sql.NullInt64          // Untuk handle NULL dari created_by
@@ -199,6 +222,7 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 		&product.Nama,
 		&product.Harga,
 		&product.Stok,
+		&barcode,
 		&product.CategoryID,
 		&hargaBeli,
 		&defaultDiscType,
@@ -215,6 +239,11 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 	// Set harga_beli jika valid
 	if hargaBeli.Valid {
 		product.HargaBeli = &hargaBeli.Float64
+	}
+
+	// Set barcode jika valid
+	if barcode.Valid {
+		product.Barcode = &barcode.String
 	}
 
 	// Set default discount jika valid
@@ -254,22 +283,22 @@ func (r *ProductRepository) Create(product *models.Product) error {
 	// - HargaBeli akan diupdate (EXCLUDED.harga_beli)
 	// Jika belum ada, akan insert produk baru
 	query := `
-		INSERT INTO products (nama, harga, stok, category_id, harga_beli, created_by, default_discount_type, default_discount_value) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO products (nama, harga, stok, category_id, harga_beli, created_by, barcode, default_discount_type, default_discount_value) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (nama) 
 		DO UPDATE SET 
 			harga = EXCLUDED.harga,
 			stok = products.stok + EXCLUDED.stok,
 			category_id = EXCLUDED.category_id,
 			harga_beli = EXCLUDED.harga_beli,
+			barcode = EXCLUDED.barcode,
 			default_discount_type = EXCLUDED.default_discount_type,
 			default_discount_value = EXCLUDED.default_discount_value
 		RETURNING id, stok
 	`
 
 	// Execute query dan scan ID + stok terbaru yang di-return
-	// $1 = product.Nama, $2 = product.Harga, $3 = product.Stok, $4 = product.CategoryID
-	err := r.db.QueryRow(query, product.Nama, product.Harga, product.Stok, product.CategoryID, product.HargaBeli, product.CreatedBy, product.DefaultDiscountType, product.DefaultDiscountValue).Scan(&product.ID, &product.Stok)
+	err := r.db.QueryRow(query, product.Nama, product.Harga, product.Stok, product.CategoryID, product.HargaBeli, product.CreatedBy, product.Barcode, product.DefaultDiscountType, product.DefaultDiscountValue).Scan(&product.ID, &product.Stok)
 
 	return err // Return error (nil kalau sukses)
 }
@@ -278,13 +307,94 @@ func (r *ProductRepository) Create(product *models.Product) error {
 // Stok dikelola lewat pembelian (POST /api/purchases) dan penjualan (POST /api/checkout)
 // Harga beli dikelola lewat pembelian (POST /api/purchases)
 func (r *ProductRepository) Update(product *models.Product) error {
-	// SQL query untuk UPDATE — nama, harga jual, kategori, dan diskon default
+	// SQL query untuk UPDATE — nama, harga jual, kategori, barcode, dan diskon default
 	// Stok dan harga_beli TIDAK bisa diubah dari sini
-	query := "UPDATE products SET nama = $1, harga = $2, category_id = $3, default_discount_type = $4, default_discount_value = $5 WHERE id = $6"
+	query := "UPDATE products SET nama = $1, harga = $2, category_id = $3, barcode = $4, default_discount_type = $5, default_discount_value = $6 WHERE id = $7"
 
-	_, err := r.db.Exec(query, product.Nama, product.Harga, product.CategoryID, product.DefaultDiscountType, product.DefaultDiscountValue, product.ID)
+	_, err := r.db.Exec(query, product.Nama, product.Harga, product.CategoryID, product.Barcode, product.DefaultDiscountType, product.DefaultDiscountValue, product.ID)
 
 	return err
+}
+
+// GetByBarcode retrieves a product by barcode (exact match)
+// Fungsi ini mengambil 1 produk berdasarkan barcode
+func (r *ProductRepository) GetByBarcode(barcode string) (*models.Product, error) {
+	query := `
+		SELECT 
+			p.id, 
+			p.nama, 
+			p.harga, 
+			p.stok, 
+			p.barcode,
+			p.category_id,
+			p.harga_beli,
+			p.default_discount_type,
+			p.default_discount_value,
+			p.created_by,
+			c.id as category_id_full,
+			c.nama as category_name,
+			c.description as category_description
+		FROM products p
+		LEFT JOIN categories c ON p.category_id = c.id
+		WHERE p.barcode = $1
+	`
+
+	row := r.db.QueryRow(query, barcode)
+
+	var product models.Product
+	var categoryID sql.NullInt64
+	var categoryName sql.NullString
+	var categoryDesc sql.NullString
+	var hargaBeli sql.NullFloat64
+	var barcodeVal sql.NullString
+	var defaultDiscType sql.NullString
+	var defaultDiscValue sql.NullFloat64
+	var createdBy sql.NullInt64
+
+	err := row.Scan(
+		&product.ID,
+		&product.Nama,
+		&product.Harga,
+		&product.Stok,
+		&barcodeVal,
+		&product.CategoryID,
+		&hargaBeli,
+		&defaultDiscType,
+		&defaultDiscValue,
+		&createdBy,
+		&categoryID,
+		&categoryName,
+		&categoryDesc,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if hargaBeli.Valid {
+		product.HargaBeli = &hargaBeli.Float64
+	}
+	if barcodeVal.Valid {
+		product.Barcode = &barcodeVal.String
+	}
+	if defaultDiscType.Valid {
+		product.DefaultDiscountType = &defaultDiscType.String
+	}
+	if defaultDiscValue.Valid {
+		product.DefaultDiscountValue = &defaultDiscValue.Float64
+	}
+	if createdBy.Valid {
+		id := int(createdBy.Int64)
+		product.CreatedBy = &id
+	}
+	if categoryName.Valid && categoryID.Valid {
+		product.Category = &models.Category{
+			ID:          int(categoryID.Int64),
+			Nama:        categoryName.String,
+			Description: categoryDesc.String,
+		}
+	}
+
+	return &product, nil
 }
 
 // Delete removes a product from database

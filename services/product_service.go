@@ -57,10 +57,11 @@ func (s *ProductService) validateProduct(product *models.Product) error {
 // Parameter searchName untuk filter by name (kosong = ambil semua)
 // Parameter pagination untuk limit dan offset (nil = tanpa pagination)
 // Return: products, total count, error
-func (s *ProductService) GetAll(searchName string, pagination *models.PaginationParams) ([]models.Product, int, error) {
+func (s *ProductService) GetAll(searchName string, searchBarcode string, pagination *models.PaginationParams) ([]models.Product, int, error) {
 	// Generate cache key berdasarkan search dan pagination
 	cacheKey := s.cache.GenerateKey("products", "list",
 		fmt.Sprintf("search:%s", searchName),
+		fmt.Sprintf("barcode:%s", searchBarcode),
 		fmt.Sprintf("page:%d", pagination.Page),
 		fmt.Sprintf("limit:%d", pagination.Limit))
 
@@ -78,7 +79,7 @@ func (s *ProductService) GetAll(searchName string, pagination *models.Pagination
 	}
 
 	// Cache MISS - ambil dari database
-	products, totalCount, err := s.repo.GetAll(searchName, pagination)
+	products, totalCount, err := s.repo.GetAll(searchName, searchBarcode, pagination)
 	if err != nil {
 		log.Printf("❌ Error getting products from database: %v", err)
 		return nil, 0, err
@@ -111,6 +112,31 @@ func (s *ProductService) GetByID(id int) (*models.Product, error) {
 	productPtr, err := s.repo.GetByID(id)
 	if err != nil {
 		log.Printf("❌ Error getting product by ID %d: %v", id, err)
+		return nil, err
+	}
+
+	// Simpan ke cache
+	s.cache.Set(cacheKey, productPtr, 0)
+
+	return productPtr, nil
+}
+
+// GetByBarcode retrieves a product by barcode
+// Fungsi ini memanggil repository untuk ambil 1 produk by barcode
+func (s *ProductService) GetByBarcode(barcode string) (*models.Product, error) {
+	// Generate cache key
+	cacheKey := s.cache.GenerateKey("products", "barcode", fmt.Sprintf("code:%s", barcode))
+
+	// Coba ambil dari cache
+	var product models.Product
+	if s.cache.Get(cacheKey, &product) {
+		return &product, nil
+	}
+
+	// Cache MISS - ambil dari database
+	productPtr, err := s.repo.GetByBarcode(barcode)
+	if err != nil {
+		log.Printf("❌ Error getting product by barcode %s: %v", barcode, err)
 		return nil, err
 	}
 

@@ -37,9 +37,19 @@ func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// HandleProductByID handles /api/produk/{id} (GET, PUT, DELETE)
-// Fungsi ini handle 3 method: GET (by ID), PUT (update), DELETE (hapus)
+// HandleProductByID handles /api/produk/{id} or /api/produk/barcode/{code}
+// Fungsi ini handle: GET (by ID), PUT (update), DELETE (hapus), atau GET by barcode
 func (h *ProductHandler) HandleProductByID(w http.ResponseWriter, r *http.Request) {
+	// Cek apakah ini route barcode: /api/produk/barcode/{code}
+	if strings.HasPrefix(r.URL.Path, "/api/produk/barcode/") {
+		if r.Method == "GET" {
+			h.GetByBarcode(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+		return
+	}
+
 	// Switch berdasarkan HTTP method
 	switch r.Method {
 	case "GET":
@@ -84,8 +94,11 @@ func (h *ProductHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	// Buat pagination params
 	pagination := models.NewPaginationParams(page, limit)
 
+	// Ambil query parameter 'barcode' dari URL (exact match)
+	searchBarcode := r.URL.Query().Get("barcode")
+
 	// Panggil service untuk ambil produk (dengan filter dan pagination)
-	products, totalCount, err := h.service.GetAll(searchName, &pagination)
+	products, totalCount, err := h.service.GetAll(searchName, searchBarcode, &pagination)
 	if err != nil {
 		// Log error untuk debugging
 		log.Printf("❌ Handler: Error getting products: %v", err)
@@ -175,6 +188,39 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Encode product jadi JSON dan kirim ke client
+	json.NewEncoder(w).Encode(product)
+}
+
+// GetByBarcode retrieves a product by barcode
+// Fungsi ini handle GET /api/produk/barcode/{code}
+func (h *ProductHandler) GetByBarcode(w http.ResponseWriter, r *http.Request) {
+	// Extract barcode dari URL: /api/produk/barcode/1234567890
+	barcode := strings.TrimPrefix(r.URL.Path, "/api/produk/barcode/")
+	if barcode == "" {
+		log.Printf("⚠️ Handler: Empty barcode")
+		http.Error(w, "Barcode tidak boleh kosong", http.StatusBadRequest)
+		return
+	}
+
+	// Panggil service untuk cari produk by barcode
+	product, err := h.service.GetByBarcode(barcode)
+	if err != nil {
+		log.Printf("❌ Handler: Error getting product by barcode %s: %v", barcode, err)
+		http.Error(w, "Produk dengan barcode tersebut tidak ditemukan", http.StatusNotFound)
+		return
+	}
+
+	// Filter sensitive data based on role
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsAdmin() {
+		product.HargaBeli = nil
+		product.Margin = nil
+		product.CreatedBy = nil
+	} else {
+		product.Margin = product.CalculateMargin()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(product)
 }
 

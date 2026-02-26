@@ -40,7 +40,9 @@ func (r *ProductRepository) GetAll(searchName string, searchBarcode string, pagi
 			p.created_by,
 			c.id as category_id_full,
 			c.nama as category_name,
-			c.description as category_description
+			c.description as category_description,
+			COALESCE(c.discount_type, '') as category_discount_type,
+			COALESCE(c.discount_value, 0) as category_discount_value
 		FROM products p
 		LEFT JOIN categories c ON p.category_id = c.id
 	`
@@ -111,6 +113,8 @@ func (r *ProductRepository) GetAll(searchName string, searchBarcode string, pagi
 		var categoryID sql.NullInt64         // Untuk handle NULL dari LEFT JOIN
 		var categoryName sql.NullString      // Untuk handle NULL dari LEFT JOIN
 		var categoryDesc sql.NullString      // Untuk handle NULL dari LEFT JOIN
+		var catDiscType string               // Diskon kategori
+		var catDiscValue float64             // Nilai diskon kategori
 		var hargaBeli sql.NullFloat64        // Untuk handle NULL dari harga_beli
 		var barcode sql.NullString           // Untuk handle NULL dari barcode
 		var defaultDiscType sql.NullString   // Untuk handle NULL dari default_discount_type
@@ -133,6 +137,8 @@ func (r *ProductRepository) GetAll(searchName string, searchBarcode string, pagi
 			&categoryID,
 			&categoryName,
 			&categoryDesc,
+			&catDiscType,
+			&catDiscValue,
 		)
 		if err != nil {
 			return nil, 0, err // Kalau scan error, return error
@@ -162,13 +168,18 @@ func (r *ProductRepository) GetAll(searchName string, searchBarcode string, pagi
 			product.CreatedBy = &id
 		}
 
-		// Jika ada category, populate Category struct dengan semua field
+		// Jika ada category, populate Category struct dengan semua field termasuk diskon
 		if categoryName.Valid && categoryID.Valid {
-			product.Category = &models.Category{
-				ID:          int(categoryID.Int64),
-				Nama:        categoryName.String,
-				Description: categoryDesc.String,
+			cat := &models.Category{
+				ID:            int(categoryID.Int64),
+				Nama:          categoryName.String,
+				Description:   categoryDesc.String,
+				DiscountValue: catDiscValue,
 			}
+			if catDiscType != "" {
+				cat.DiscountType = &catDiscType
+			}
+			product.Category = cat
 		}
 
 		// Tambahkan product ke slice products
@@ -197,7 +208,9 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 			p.created_by,
 			c.id as category_id_full,
 			c.nama as category_name,
-			c.description as category_description
+			c.description as category_description,
+			COALESCE(c.discount_type, '') as category_discount_type,
+			COALESCE(c.discount_value, 0) as category_discount_value
 		FROM products p
 		LEFT JOIN categories c ON p.category_id = c.id
 		WHERE p.id = $1
@@ -210,6 +223,8 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 	var categoryID sql.NullInt64         // Untuk handle NULL dari LEFT JOIN
 	var categoryName sql.NullString      // Untuk handle NULL dari LEFT JOIN
 	var categoryDesc sql.NullString      // Untuk handle NULL dari LEFT JOIN
+	var catDiscType string               // Diskon kategori
+	var catDiscValue float64             // Nilai diskon kategori
 	var hargaBeli sql.NullFloat64        // Untuk handle NULL dari harga_beli
 	var barcode sql.NullString           // Untuk handle NULL dari barcode
 	var defaultDiscType sql.NullString   // Untuk handle NULL dari default_discount_type
@@ -231,6 +246,8 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 		&categoryID,
 		&categoryName,
 		&categoryDesc,
+		&catDiscType,
+		&catDiscValue,
 	)
 	if err != nil {
 		return nil, err // Kalau tidak ketemu atau error, return nil
@@ -262,11 +279,16 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 
 	// Jika ada category, populate Category struct dengan semua field
 	if categoryName.Valid && categoryID.Valid {
-		product.Category = &models.Category{
-			ID:          int(categoryID.Int64),
-			Nama:        categoryName.String,
-			Description: categoryDesc.String,
+		cat := &models.Category{
+			ID:            int(categoryID.Int64),
+			Nama:          categoryName.String,
+			Description:   categoryDesc.String,
+			DiscountValue: catDiscValue,
 		}
+		if catDiscType != "" {
+			cat.DiscountType = &catDiscType
+		}
+		product.Category = cat
 	}
 
 	return &product, nil // Return pointer ke product
@@ -333,7 +355,9 @@ func (r *ProductRepository) GetByBarcode(barcode string) (*models.Product, error
 			p.created_by,
 			c.id as category_id_full,
 			c.nama as category_name,
-			c.description as category_description
+			c.description as category_description,
+			COALESCE(c.discount_type, '') as category_discount_type,
+			COALESCE(c.discount_value, 0) as category_discount_value
 		FROM products p
 		LEFT JOIN categories c ON p.category_id = c.id
 		WHERE p.barcode = $1
@@ -345,6 +369,8 @@ func (r *ProductRepository) GetByBarcode(barcode string) (*models.Product, error
 	var categoryID sql.NullInt64
 	var categoryName sql.NullString
 	var categoryDesc sql.NullString
+	var catDiscType string
+	var catDiscValue float64
 	var hargaBeli sql.NullFloat64
 	var barcodeVal sql.NullString
 	var defaultDiscType sql.NullString
@@ -365,6 +391,8 @@ func (r *ProductRepository) GetByBarcode(barcode string) (*models.Product, error
 		&categoryID,
 		&categoryName,
 		&categoryDesc,
+		&catDiscType,
+		&catDiscValue,
 	)
 	if err != nil {
 		return nil, err
@@ -387,11 +415,16 @@ func (r *ProductRepository) GetByBarcode(barcode string) (*models.Product, error
 		product.CreatedBy = &id
 	}
 	if categoryName.Valid && categoryID.Valid {
-		product.Category = &models.Category{
-			ID:          int(categoryID.Int64),
-			Nama:        categoryName.String,
-			Description: categoryDesc.String,
+		cat := &models.Category{
+			ID:            int(categoryID.Int64),
+			Nama:          categoryName.String,
+			Description:   categoryDesc.String,
+			DiscountValue: catDiscValue,
 		}
+		if catDiscType != "" {
+			cat.DiscountType = &catDiscType
+		}
+		product.Category = cat
 	}
 
 	return &product, nil

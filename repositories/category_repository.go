@@ -21,7 +21,7 @@ func NewCategoryRepository(db *sql.DB) *CategoryRepository {
 // Fungsi ini mengambil semua kategori dari table categories
 func (r *CategoryRepository) GetAll() ([]models.Category, error) {
 	// SQL query untuk select semua kolom dari table categories
-	query := "SELECT id, nama, description FROM categories"
+	query := "SELECT id, nama, description, COALESCE(discount_type, '') as discount_type, COALESCE(discount_value, 0) as discount_value FROM categories"
 
 	// Execute query dan dapatkan rows (banyak baris)
 	rows, err := r.db.Query(query)
@@ -36,12 +36,17 @@ func (r *CategoryRepository) GetAll() ([]models.Category, error) {
 	// Loop semua rows yang didapat dari database
 	for rows.Next() {
 		var category models.Category // Buat variable category untuk setiap row
+		var discType string
 
 		// Scan data dari row ke struct category
-		// Urutan harus sama dengan SELECT: id, nama, description
-		err := rows.Scan(&category.ID, &category.Nama, &category.Description)
+		err := rows.Scan(&category.ID, &category.Nama, &category.Description, &discType, &category.DiscountValue)
 		if err != nil {
 			return nil, err // Kalau scan error, return error
+		}
+
+		// Set discount_type jika tidak kosong
+		if discType != "" {
+			category.DiscountType = &discType
 		}
 
 		// Tambahkan category ke slice categories
@@ -55,13 +60,19 @@ func (r *CategoryRepository) GetAll() ([]models.Category, error) {
 // Fungsi ini mengambil 1 kategori berdasarkan ID beserta semua products dalam category tersebut
 func (r *CategoryRepository) GetByID(id int) (*models.Category, error) {
 	// 1. Ambil category data
-	query := "SELECT id, nama, description FROM categories WHERE id = $1"
+	query := "SELECT id, nama, description, COALESCE(discount_type, '') as discount_type, COALESCE(discount_value, 0) as discount_value FROM categories WHERE id = $1"
 	row := r.db.QueryRow(query, id)
 
 	var category models.Category
-	err := row.Scan(&category.ID, &category.Nama, &category.Description)
+	var discType string
+	err := row.Scan(&category.ID, &category.Nama, &category.Description, &discType, &category.DiscountValue)
 	if err != nil {
 		return nil, err // Kalau tidak ketemu atau error, return nil
+	}
+
+	// Set discount_type jika tidak kosong
+	if discType != "" {
+		category.DiscountType = &discType
 	}
 
 	// 2. Ambil semua products yang punya category_id ini
@@ -95,11 +106,10 @@ func (r *CategoryRepository) GetByID(id int) (*models.Category, error) {
 func (r *CategoryRepository) Create(category *models.Category) error {
 	// SQL query untuk INSERT
 	// RETURNING id = return ID yang baru dibuat (auto-increment)
-	query := "INSERT INTO categories (nama, description) VALUES ($1, $2) RETURNING id"
+	query := "INSERT INTO categories (nama, description, discount_type, discount_value) VALUES ($1, $2, $3, $4) RETURNING id"
 
 	// Execute query dan langsung scan ID yang di-return
-	// $1 = category.Nama, $2 = category.Description
-	err := r.db.QueryRow(query, category.Nama, category.Description).Scan(&category.ID)
+	err := r.db.QueryRow(query, category.Nama, category.Description, category.DiscountType, category.DiscountValue).Scan(&category.ID)
 
 	return err // Return error (nil kalau sukses)
 }
@@ -108,13 +118,12 @@ func (r *CategoryRepository) Create(category *models.Category) error {
 // Fungsi ini mengupdate kategori yang sudah ada
 func (r *CategoryRepository) Update(category *models.Category) error {
 	// SQL query untuk UPDATE
-	// SET untuk set nilai baru
+	// SET untuk set nilai baru termasuk discount
 	// WHERE untuk kondisi (update kategori dengan id tertentu)
-	query := "UPDATE categories SET nama = $1, description = $2 WHERE id = $3"
+	query := "UPDATE categories SET nama = $1, description = $2, discount_type = $3, discount_value = $4 WHERE id = $5"
 
 	// Execute query
-	// $1 = nama, $2 = description, $3 = id
-	_, err := r.db.Exec(query, category.Nama, category.Description, category.ID)
+	_, err := r.db.Exec(query, category.Nama, category.Description, category.DiscountType, category.DiscountValue, category.ID)
 
 	return err // Return error (nil kalau sukses)
 }

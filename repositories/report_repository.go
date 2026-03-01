@@ -308,3 +308,15 @@ func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit in
 
 	return topQty, topProfit, nil
 }
+
+// CountLowStockProducts menghitung jumlah produk yang stoknya <= threshold
+// Digunakan untuk widget peringatan stok menipis di dashboard
+func (r *ReportRepository) CountLowStockProducts(threshold int) (int, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM products WHERE stok <= $1`
+	err := r.db.QueryRow(query, threshold).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}

@@ -115,7 +115,13 @@ func (h *ReportHandler) GetSalesReportByDateRange(w http.ResponseWriter, r *http
 	json.NewEncoder(w).Encode(report)
 }
 
-// GetSalesTrend handles GET /api/dashboard/sales-trend?period=day|month|year&timezone=Asia/Jakarta
+// GetSalesTrend handles GET /api/dashboard/sales-trend
+// Query params:
+//
+//	period=day|month|year  (default: day)
+//	start_date=YYYY-MM-DD  (opsional, jika diisi maka end_date wajib diisi juga)
+//	end_date=YYYY-MM-DD    (opsional)
+//	timezone=Asia/Jakarta  (default: Asia/Jakarta)
 func (h *ReportHandler) GetSalesTrend(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -130,7 +136,30 @@ func (h *ReportHandler) GetSalesTrend(w http.ResponseWriter, r *http.Request) {
 	// Parse timezone
 	loc := parseTimezone(r)
 
-	trends, err := h.service.GetSalesTrend(period, loc)
+	// Parse start_date & end_date (opsional)
+	var startDate, endDate time.Time
+	startDateStr := r.URL.Query().Get("start_date")
+	endDateStr := r.URL.Query().Get("end_date")
+
+	if startDateStr != "" && endDateStr != "" {
+		var err error
+		startDate, err = time.ParseInLocation("2006-01-02", startDateStr, loc)
+		if err != nil {
+			http.Error(w, "Format start_date tidak valid (gunakan: YYYY-MM-DD)", http.StatusBadRequest)
+			return
+		}
+		endDate, err = time.ParseInLocation("2006-01-02", endDateStr, loc)
+		if err != nil {
+			http.Error(w, "Format end_date tidak valid (gunakan: YYYY-MM-DD)", http.StatusBadRequest)
+			return
+		}
+		if startDate.After(endDate) {
+			http.Error(w, "start_date harus sebelum atau sama dengan end_date", http.StatusBadRequest)
+			return
+		}
+	}
+
+	trends, err := h.service.GetSalesTrend(period, loc, startDate, endDate)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -138,8 +167,10 @@ func (h *ReportHandler) GetSalesTrend(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"period": period,
-		"data":   trends,
+		"period":     period,
+		"start_date": startDateStr,
+		"end_date":   endDateStr,
+		"data":       trends,
 	})
 }
 
@@ -171,4 +202,70 @@ func (h *ReportHandler) GetTopProducts(w http.ResponseWriter, r *http.Request) {
 		"by_quantity": topQty,
 		"by_profit":   topProfit,
 	})
+}
+
+// GetDashboardSummary handles GET /api/dashboard/summary
+// Mengembalikan KPI cards: omzet, profit, transaksi, items, pengeluaran, laba bersih
+// beserta % pertumbuhan vs periode sebelumnya dan jumlah produk stok menipis.
+// Query params:
+//
+//	start_date=YYYY-MM-DD  (opsional, default: hari ini)
+//	end_date=YYYY-MM-DD    (opsional, default: hari ini)
+//	low_stock_threshold=N  (opsional, default: 5)
+//	timezone=Asia/Jakarta  (default: Asia/Jakarta)
+func (h *ReportHandler) GetDashboardSummary(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	loc := parseTimezone(r)
+
+	// Parse start_date & end_date (opsional, default: hari ini)
+	var startDate, endDate time.Time
+	startDateStr := r.URL.Query().Get("start_date")
+	endDateStr := r.URL.Query().Get("end_date")
+
+	if startDateStr != "" && endDateStr != "" {
+		var err error
+		startDate, err = time.ParseInLocation("2006-01-02", startDateStr, loc)
+		if err != nil {
+			http.Error(w, "Format start_date tidak valid (gunakan: YYYY-MM-DD)", http.StatusBadRequest)
+			return
+		}
+		endDate, err = time.ParseInLocation("2006-01-02", endDateStr, loc)
+		if err != nil {
+			http.Error(w, "Format end_date tidak valid (gunakan: YYYY-MM-DD)", http.StatusBadRequest)
+			return
+		}
+		if startDate.After(endDate) {
+			http.Error(w, "start_date harus sebelum atau sama dengan end_date", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Parse low_stock_threshold (default: 5)
+	lowStockThreshold := 5
+	if thStr := r.URL.Query().Get("low_stock_threshold"); thStr != "" {
+		if th, err := strconv.Atoi(thStr); err == nil && th >= 0 {
+			lowStockThreshold = th
+		}
+	}
+
+	summary, err := h.service.GetDashboardSummary(startDate, endDate, loc)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Hitung jumlah produk stok menipis
+	lowStockCount, err := h.service.CountLowStockProducts(lowStockThreshold)
+	if err != nil {
+		log.Printf("⚠️ Gagal hitung low stock: %v", err)
+		// Tidak fatal, tetap return data lainnya
+	}
+	summary.LowStockCount = lowStockCount
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(summary)
 }

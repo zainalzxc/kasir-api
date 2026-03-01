@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 // SalesReport represents daily sales summary
 // Struct untuk laporan penjualan harian
 type SalesReport struct {
@@ -29,4 +31,17 @@ type SalesTrend struct {
 	TotalSales       float64 `json:"total_sales"`       // Total penjualan (omzet)
 	TotalProfit      float64 `json:"total_profit"`      // Total keuntungan (profit)
 	TransactionCount int     `json:"transaction_count"` // Jumlah transaksi
+}
+
+// DashboardSummary represents KPI summary for dashboard with growth comparison
+// Berisi data periode saat ini, periode sebelumnya, dan perbandingan persentase pertumbuhan
+type DashboardSummary struct {
+	PeriodStart       time.Time   `json:"period_start"`       // Awal periode yang diminta
+	PeriodEnd         time.Time   `json:"period_end"`         // Akhir periode yang diminta
+	Current           SalesReport `json:"current"`            // Data periode saat ini
+	Previous          SalesReport `json:"previous"`           // Data periode sebelumnya (untuk perbandingan)
+	RevenueGrowth     float64     `json:"revenue_growth"`     // % perubahan omzet vs periode sebelumnya
+	ProfitGrowth      float64     `json:"profit_growth"`      // % perubahan profit vs periode sebelumnya
+	TransactionGrowth float64     `json:"transaction_growth"` // % perubahan jumlah transaksi vs periode sebelumnya
+	LowStockCount     int         `json:"low_stock_count"`    // Jumlah produk stok menipis (threshold dari query param)
 }

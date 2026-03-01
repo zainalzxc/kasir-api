@@ -99,10 +99,12 @@ func main() {
 	mux.Handle("/api/purchases", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(purchaseHandler.HandlePurchases))))
 
 	// Dashboard routes
-	// /api/dashboard/sales-trend -> GET (Admin Only) ?period=day|month|year
+	// /api/dashboard/sales-trend -> GET (Admin Only) ?period=day|month|year&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
 	mux.Handle("/api/dashboard/sales-trend", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(reportHandler.GetSalesTrend))))
 	// /api/dashboard/top-products -> GET (Admin Only) ?limit=5
 	mux.Handle("/api/dashboard/top-products", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(reportHandler.GetTopProducts))))
+	// /api/dashboard/summary -> GET (Admin Only) ?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&low_stock_threshold=5
+	mux.Handle("/api/dashboard/summary", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(reportHandler.GetDashboardSummary))))
 
 	// Discount routes
 	// /api/discounts/active -> GET (Public/Kasir)
@@ -219,9 +221,12 @@ func main() {
 	fmt.Println("  - GET    /api/purchases")
 	fmt.Println("  - GET    /api/purchases/{id}")
 	fmt.Println("")
-	fmt.Println("📚 Report Endpoints:")
+	fmt.Println("📚 Report & Dashboard Endpoints (Admin Only):")
 	fmt.Println("  - GET    /api/report/hari-ini")
 	fmt.Println("  - GET    /api/report?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD")
+	fmt.Println("  - GET    /api/dashboard/summary?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&low_stock_threshold=5")
+	fmt.Println("  - GET    /api/dashboard/sales-trend?period=day|month|year&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD")
+	fmt.Println("  - GET    /api/dashboard/top-products?limit=5")
 	fmt.Println("")
 	fmt.Println("🔑 Default Credentials:")
 	fmt.Println("  - admin / admin123 (role: admin)")

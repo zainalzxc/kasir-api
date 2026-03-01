@@ -63,7 +63,7 @@ func (h *TransactionHandler) HandleTransactions(w http.ResponseWriter, r *http.R
 
 	if startDateStr != "" && endDateStr != "" {
 		// Parse timezone (default: Asia/Jakarta)
-		loc := parseTimezone(r)
+		loc, _ := parseTimezone(r)
 
 		// Parse tanggal
 		startDateParsed, parseErr := time.Parse("2006-01-02", startDateStr)

@@ -166,8 +166,15 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 }
 
 // GetSalesTrend retrieves sales trend data for chart
-func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval string) ([]models.SalesTrend, error) {
+// tzName = nama timezone IANA (contoh: "Asia/Makassar") untuk konversi tanggal di SQL
+// Penting: DATE_TRUNC dijalankan SETELAH konversi timezone agar grouping per hari
+// sesuai waktu lokal user, bukan UTC.
+func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval string, tzName string) ([]models.SalesTrend, error) {
 	var trends []models.SalesTrend
+
+	if tzName == "" {
+		tzName = "Asia/Jakarta"
+	}
 
 	var dateFormat string
 	var truncateUnit string
@@ -187,9 +194,12 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 		dateFormat = "YYYY-MM-DD"
 	}
 
+	// Gunakan AT TIME ZONE untuk mengkonversi timestamp UTC ke timezone lokal
+	// sebelum DATE_TRUNC, agar grouping per hari menggunakan waktu lokal user.
+	// Contoh: transaksi jam 23:00 WITA = 15:00 UTC → harus masuk ke hari WITA, bukan UTC.
 	query := `
 		SELECT 
-			TO_CHAR(DATE_TRUNC($1, t.created_at), $2) as period,
+			TO_CHAR(DATE_TRUNC($1, (t.created_at AT TIME ZONE $2)), $3) as period,
 			COALESCE(SUM(t.total_amount - COALESCE(t.discount_amount, 0)), 0) as total_sales,
 			COALESCE(SUM(t.total_amount - COALESCE(t.discount_amount, 0)) - SUM(hpp.total_hpp), 0) as total_profit,
 			COUNT(DISTINCT t.id) as transaction_count
@@ -201,12 +211,12 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 			FROM transaction_details td
 			GROUP BY td.transaction_id
 		) hpp ON hpp.transaction_id = t.id
-		WHERE t.created_at BETWEEN $3 AND $4
-		GROUP BY DATE_TRUNC($1, t.created_at)
-		ORDER BY DATE_TRUNC($1, t.created_at) ASC
+		WHERE t.created_at BETWEEN $4 AND $5
+		GROUP BY DATE_TRUNC($1, (t.created_at AT TIME ZONE $2))
+		ORDER BY DATE_TRUNC($1, (t.created_at AT TIME ZONE $2)) ASC
 	`
 
-	rows, err := r.db.Query(query, truncateUnit, dateFormat, startDate, endDate)
+	rows, err := r.db.Query(query, truncateUnit, tzName, dateFormat, startDate, endDate)
 	if err != nil {
 		return nil, err
 	}

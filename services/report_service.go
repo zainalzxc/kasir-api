@@ -36,7 +36,8 @@ func (s *ReportService) GetSalesReportByDateRange(startDate, endDate time.Time) 
 // Jika startDate & endDate diisi, akan digunakan langsung (custom range).
 // Jika kosong (zero value), akan fallback ke preset berdasarkan periodType.
 // loc = timezone dari user (dikirim dari handler)
-func (s *ReportService) GetSalesTrend(periodType string, loc *time.Location, startDate, endDate time.Time) ([]models.SalesTrend, error) {
+// tzName = nama timezone string (contoh: "Asia/Makassar") untuk query SQL AT TIME ZONE
+func (s *ReportService) GetSalesTrend(periodType string, loc *time.Location, tzName string, startDate, endDate time.Time) ([]models.SalesTrend, error) {
 	now := time.Now().In(loc)
 	var interval string
 
@@ -72,7 +73,7 @@ func (s *ReportService) GetSalesTrend(periodType string, loc *time.Location, sta
 		interval = "day"
 	}
 
-	return s.repo.GetSalesTrend(startDate, endDate, interval)
+	return s.repo.GetSalesTrend(startDate, endDate, interval, tzName)
 }
 
 // GetDashboardSummary retrieves KPI summary for dashboard

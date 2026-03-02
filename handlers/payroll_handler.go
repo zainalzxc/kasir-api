@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"kasir-api/middleware"
 	"kasir-api/models"
 	"kasir-api/services"
 	"log"
@@ -88,13 +89,13 @@ func (h *PayrollHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 // Create handles POST /api/payroll
 func (h *PayrollHandler) Create(w http.ResponseWriter, r *http.Request) {
-	// Ambil userID dari JWT Context Token
-	userIDVal := r.Context().Value("user_id")
-	if userIDVal == nil {
+	// Ambil user dari JWT Context Token
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	createdBy := int(userIDVal.(float64)) // JWT standard parse int as float64
+	createdBy := user.ID
 
 	var req models.CreatePayrollRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

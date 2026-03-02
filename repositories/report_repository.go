@@ -127,8 +127,9 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		return nil, err
 	}
 
-	// Hitung laba bersih = revenue - pengeluaran_stok - pengeluaran_gaji
-	report.LabaBersih = report.TotalRevenue - report.TotalPengeluaran - report.TotalPayroll
+	// Hitung laba bersih = laba kotor (total_profit) - pengeluaran_gaji
+	// Pembelian stok tidak dikurangi karena itu adalah konversi aset Kas ke Inventory (bukan Opex).
+	report.LabaBersih = report.TotalProfit - report.TotalPayroll
 
 	// Query 3: Semua produk terjual (sorted by total_sales DESC)
 	// Profit per produk dihitung dengan distribusi proporsional tx-level discount:

@@ -167,8 +167,8 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 
 // GetSalesTrend retrieves sales trend data for chart
 // tzName = nama timezone IANA (contoh: "Asia/Makassar") untuk konversi tanggal di SQL
-// Penting: DATE_TRUNC dijalankan SETELAH konversi timezone agar grouping per hari
-// sesuai waktu lokal user, bukan UTC.
+// Gunakan TO_CHAR(created_at AT TIME ZONE tzName, format) agar grouping
+// menggunakan tanggal lokal user, bukan UTC.
 func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval string, tzName string) ([]models.SalesTrend, error) {
 	var trends []models.SalesTrend
 
@@ -176,30 +176,26 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 		tzName = "Asia/Jakarta"
 	}
 
+	// Format tanggal berdasarkan interval
+	// Contoh: "day" → "YYYY-MM-DD", "month" → "YYYY-MM", "year" → "YYYY"
 	var dateFormat string
-	var truncateUnit string
-
 	switch interval {
-	case "day":
-		truncateUnit = "day"
-		dateFormat = "YYYY-MM-DD"
 	case "month":
-		truncateUnit = "month"
 		dateFormat = "YYYY-MM"
 	case "year":
-		truncateUnit = "year"
 		dateFormat = "YYYY"
-	default:
-		truncateUnit = "day"
+	default: // "day"
 		dateFormat = "YYYY-MM-DD"
 	}
 
-	// Gunakan AT TIME ZONE untuk mengkonversi timestamp UTC ke timezone lokal
-	// sebelum DATE_TRUNC, agar grouping per hari menggunakan waktu lokal user.
-	// Contoh: transaksi jam 23:00 WITA = 15:00 UTC → harus masuk ke hari WITA, bukan UTC.
+	// Pendekatan: TO_CHAR(created_at AT TIME ZONE $1, $2)
+	// - created_at AT TIME ZONE tzName → konversi UTC ke waktu lokal
+	// - TO_CHAR(..., format) → format sebagai string tanggal lokal
+	// GROUP BY ekspresi yang sama → grouping per hari/bulan di timezone lokal
+	// WHERE pakai timestamp dari Go (sudah timezone-aware) → BETWEEN benar
 	query := `
 		SELECT 
-			TO_CHAR(DATE_TRUNC($1, (t.created_at AT TIME ZONE $2)), $3) as period,
+			TO_CHAR((t.created_at AT TIME ZONE $1), $2) as period,
 			COALESCE(SUM(t.total_amount - COALESCE(t.discount_amount, 0)), 0) as total_sales,
 			COALESCE(SUM(t.total_amount - COALESCE(t.discount_amount, 0)) - SUM(hpp.total_hpp), 0) as total_profit,
 			COUNT(DISTINCT t.id) as transaction_count
@@ -211,12 +207,12 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 			FROM transaction_details td
 			GROUP BY td.transaction_id
 		) hpp ON hpp.transaction_id = t.id
-		WHERE t.created_at BETWEEN $4 AND $5
-		GROUP BY DATE_TRUNC($1, (t.created_at AT TIME ZONE $2))
-		ORDER BY DATE_TRUNC($1, (t.created_at AT TIME ZONE $2)) ASC
+		WHERE t.created_at BETWEEN $3 AND $4
+		GROUP BY TO_CHAR((t.created_at AT TIME ZONE $1), $2)
+		ORDER BY TO_CHAR((t.created_at AT TIME ZONE $1), $2) ASC
 	`
 
-	rows, err := r.db.Query(query, truncateUnit, tzName, dateFormat, startDate, endDate)
+	rows, err := r.db.Query(query, tzName, dateFormat, startDate, endDate)
 	if err != nil {
 		return nil, err
 	}

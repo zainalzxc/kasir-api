@@ -113,8 +113,22 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		return nil, err
 	}
 
-	// Hitung laba bersih = revenue - pengeluaran
-	report.LabaBersih = report.TotalRevenue - report.TotalPengeluaran
+	// Query 3: Total pengeluaran Gaji (Payroll) dalam periode yang sama
+	queryPayroll := `
+		SELECT 
+			COALESCE(SUM(total), 0) as total_payroll
+		FROM payroll
+		WHERE paid_at BETWEEN $1 AND $2
+	`
+	err = r.db.QueryRow(queryPayroll, startDate, endDate).Scan(
+		&report.TotalPayroll,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Hitung laba bersih = revenue - pengeluaran_stok - pengeluaran_gaji
+	report.LabaBersih = report.TotalRevenue - report.TotalPengeluaran - report.TotalPayroll
 
 	// Query 3: Semua produk terjual (sorted by total_sales DESC)
 	// Profit per produk dihitung dengan distribusi proporsional tx-level discount:

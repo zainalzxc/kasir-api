@@ -11,7 +11,8 @@ type SalesReport struct {
 	TotalProfit      float64      `json:"total_profit"`      // Total keuntungan kotor (revenue - modal barang terjual)
 	TotalPengeluaran float64      `json:"total_pengeluaran"` // Total pembelian/pengadaan barang
 	TotalPembelian   int          `json:"total_pembelian"`   // Jumlah transaksi pembelian
-	LabaBersih       float64      `json:"laba_bersih"`       // Revenue - Pengeluaran
+	TotalPayroll     float64      `json:"total_payroll"`     // Total gaji karyawan dibayarkan
+	LabaBersih       float64      `json:"laba_bersih"`       // Revenue - PengeluaranBeliStok - Payroll
 	ProdukTerlaris   []TopProduct `json:"produk_terlaris"`   // Array semua produk terjual
 }
 

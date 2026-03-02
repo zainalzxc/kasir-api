@@ -178,7 +178,13 @@ func (h *ReportHandler) GetSalesTrend(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetTopProducts handles GET /api/dashboard/top-products?limit=5&timezone=Asia/Jakarta
+// GetTopProducts handles GET /api/dashboard/top-products
+// Query params:
+//
+//	limit=N                    (default: 5)
+//	start_date=YYYY-MM-DD      (opsional, default: 30 hari terakhir)
+//	end_date=YYYY-MM-DD        (opsional)
+//	timezone=Asia/Jakarta      (default: Asia/Jakarta)
 func (h *ReportHandler) GetTopProducts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -195,7 +201,26 @@ func (h *ReportHandler) GetTopProducts(w http.ResponseWriter, r *http.Request) {
 	// Parse timezone
 	loc, _ := parseTimezone(r)
 
-	topQty, topProfit, err := h.service.GetTopProducts(limit, loc)
+	// Parse start_date & end_date (opsional)
+	var startDate, endDate time.Time
+	startDateStr := r.URL.Query().Get("start_date")
+	endDateStr := r.URL.Query().Get("end_date")
+
+	if startDateStr != "" && endDateStr != "" {
+		var err error
+		startDate, err = time.ParseInLocation("2006-01-02", startDateStr, loc)
+		if err != nil {
+			http.Error(w, "Format start_date tidak valid (gunakan: YYYY-MM-DD)", http.StatusBadRequest)
+			return
+		}
+		endDate, err = time.ParseInLocation("2006-01-02", endDateStr, loc)
+		if err != nil {
+			http.Error(w, "Format end_date tidak valid (gunakan: YYYY-MM-DD)", http.StatusBadRequest)
+			return
+		}
+	}
+
+	topQty, topProfit, err := h.service.GetTopProducts(limit, loc, startDate, endDate)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

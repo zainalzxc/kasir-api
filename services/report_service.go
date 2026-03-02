@@ -125,20 +125,24 @@ func calcGrowth(current, prev float64) float64 {
 	return ((current - prev) / prev) * 100
 }
 
-// GetTopProducts retrieves top selling products (last 30 days)
-// loc = timezone dari user (dikirim dari handler)
-func (s *ReportService) GetTopProducts(limit int, loc *time.Location) ([]models.TopProduct, []models.TopProduct, error) {
+// GetTopProducts retrieves top selling products
+// Jika startDate/endDate diisi → gunakan rentang tersebut.
+// Jika kosong (zero value) → fallback ke 30 hari terakhir.
+// loc = timezone dari user
+func (s *ReportService) GetTopProducts(limit int, loc *time.Location, startDate, endDate time.Time) ([]models.TopProduct, []models.TopProduct, error) {
 	if limit <= 0 {
 		limit = 5
 	}
 
-	now := time.Now().In(loc)
-	startDate := now.AddDate(0, 0, -30)
+	if startDate.IsZero() || endDate.IsZero() {
+		// Fallback: last 30 hari berdasarkan timezone user
+		now := time.Now().In(loc)
+		start := now.AddDate(0, 0, -30)
+		startDate = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, loc)
+		endDate = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, loc)
+	}
 
-	startOfDay := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, loc)
-	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, loc)
-
-	return s.repo.GetTopProducts(startOfDay, endOfDay, limit)
+	return s.repo.GetTopProducts(startDate, endDate, limit)
 }
 
 // CountLowStockProducts menghitung jumlah produk yang stoknya <= threshold

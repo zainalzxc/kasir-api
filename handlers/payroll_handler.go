@@ -7,9 +7,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
-
-	"github.com/gorilla/mux"
 )
 
 type PayrollHandler struct {
@@ -70,7 +69,8 @@ func (h *PayrollHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 // GetByID handles GET /api/payroll/{id}
 func (h *PayrollHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(mux.Vars(r)["id"])
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/payroll/")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
@@ -121,7 +121,8 @@ func (h *PayrollHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // Update handles PUT /api/payroll/{id}
 func (h *PayrollHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(mux.Vars(r)["id"])
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/payroll/")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
@@ -145,7 +146,8 @@ func (h *PayrollHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 // Delete handles DELETE /api/payroll/{id}
 func (h *PayrollHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(mux.Vars(r)["id"])
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/payroll/")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return

@@ -6,8 +6,7 @@ import (
 	"kasir-api/services"
 	"net/http"
 	"strconv"
-
-	"github.com/gorilla/mux"
+	"strings"
 )
 
 type EmployeeHandler struct {
@@ -40,8 +39,8 @@ func (h *EmployeeHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 // GetByID handles GET /api/employees/{id}
 func (h *EmployeeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/employees/")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
@@ -83,8 +82,8 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // Update handles PUT /api/employees/{id}
 func (h *EmployeeHandler) Update(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/employees/")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
@@ -108,8 +107,8 @@ func (h *EmployeeHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 // SoftDelete handles DELETE /api/employees/{id}
 func (h *EmployeeHandler) SoftDelete(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/employees/")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return

@@ -84,14 +84,78 @@ func main() {
 	discountRepo := repositories.NewDiscountRepository(db)
 	discountHandler := handlers.NewDiscountHandler(discountRepo)
 
-	// Purchase layers (NEW!)
+	// Purchase layers (Admin Only)
 	purchaseRepo := repositories.NewPurchaseRepository(db)
 	purchaseService := services.NewPurchaseService(purchaseRepo, cacheService)
 	purchaseHandler := handlers.NewPurchaseHandler(purchaseService)
 
+	// Employee layers (Admin Only)
+	employeeRepo := repositories.NewEmployeeRepository(db)
+	employeeService := services.NewEmployeeService(employeeRepo)
+	employeeHandler := handlers.NewEmployeeHandler(employeeService)
+
+	// Payroll layers (Admin Only)
+	payrollRepo := repositories.NewPayrollRepository(db)
+	payrollService := services.NewPayrollService(payrollRepo)
+	payrollHandler := handlers.NewPayrollHandler(payrollService)
+
 	// ==================== SETUP ROUTER WITH MIDDLEWARE ====================
 	// Create a new ServeMux for better routing
 	mux := http.NewServeMux()
+
+	// Employee routes (Admin Only)
+	mux.Handle("/api/employees", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			employeeHandler.GetAll(w, r)
+		} else if r.Method == http.MethodPost {
+			employeeHandler.Create(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
+	mux.Handle("/api/employees/", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			employeeHandler.GetByID(w, r)
+		} else if r.Method == http.MethodPut {
+			employeeHandler.Update(w, r)
+		} else if r.Method == http.MethodDelete {
+			employeeHandler.SoftDelete(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
+	// Payroll routes (Admin Only)
+	mux.Handle("/api/payroll/report", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			payrollHandler.GetReport(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
+	mux.Handle("/api/payroll", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			payrollHandler.GetAll(w, r)
+		} else if r.Method == http.MethodPost {
+			payrollHandler.Create(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
+	mux.Handle("/api/payroll/", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			payrollHandler.GetByID(w, r)
+		} else if r.Method == http.MethodPut {
+			payrollHandler.Update(w, r)
+		} else if r.Method == http.MethodDelete {
+			payrollHandler.Delete(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
 
 	// Purchase routes (Admin Only)
 	// /api/purchases -> GET (list), POST (create)
@@ -191,6 +255,19 @@ func main() {
 	fmt.Println("🔐 Authentication: ENABLED")
 	fmt.Println("📝 Logging: ENABLED (structured JSON)")
 	fmt.Println("🌐 CORS: ENABLED")
+	fmt.Println("")
+	fmt.Println("📚 Employee & Payroll Endpoints (Admin Only):")
+	fmt.Println("  - GET    /api/employees")
+	fmt.Println("  - POST   /api/employees")
+	fmt.Println("  - GET    /api/employees/{id}")
+	fmt.Println("  - PUT    /api/employees/{id}")
+	fmt.Println("  - DELETE /api/employees/{id}")
+	fmt.Println("  - GET    /api/payroll")
+	fmt.Println("  - POST   /api/payroll")
+	fmt.Println("  - GET    /api/payroll/report")
+	fmt.Println("  - GET    /api/payroll/{id}")
+	fmt.Println("  - PUT    /api/payroll/{id}")
+	fmt.Println("  - DELETE /api/payroll/{id}")
 	fmt.Println("")
 	fmt.Println("📚 Public Endpoints:")
 	fmt.Println("  - GET    /health")

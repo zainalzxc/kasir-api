@@ -180,6 +180,30 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 	return &report, nil
 }
 
+// GetDashboardAssets retrieves total asset cost and total asset retail from products table
+// where stock > 0
+func (r *ReportRepository) GetDashboardAssets() (*models.AssetReport, error) {
+	query := `
+		SELECT 
+			COALESCE(SUM(stok * harga_beli), 0) AS total_asset_cost,
+			COALESCE(SUM(stok * harga), 0)      AS total_asset_retail
+		FROM products
+		WHERE stok > 0
+	`
+
+	var report models.AssetReport
+	err := r.db.QueryRow(query).Scan(
+		&report.TotalAssetCost,
+		&report.TotalAssetRetail,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &report, nil
+}
+
 // GetSalesTrend retrieves sales trend data for chart
 // tzName = nama timezone IANA (contoh: "Asia/Makassar") untuk konversi tanggal di SQL
 // Gunakan TO_CHAR(created_at AT TIME ZONE 'UTC' AT TIME ZONE tzName, format) agar grouping

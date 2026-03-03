@@ -298,3 +298,22 @@ func (h *ReportHandler) GetDashboardSummary(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(summary)
 }
+
+// GetDashboardAssets handles GET /api/dashboard/assets
+// Endpoint tidak membutuhkan query parameter, menampilkan total cost HPP dan potensi retail
+func (h *ReportHandler) GetDashboardAssets(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	report, err := h.service.GetDashboardAssets()
+	if err != nil {
+		log.Printf("Error get dashboard assets: %v", err)
+		http.Error(w, "Gagal mengambil data aset", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(report)
+}

@@ -169,6 +169,8 @@ func main() {
 	mux.Handle("/api/dashboard/top-products", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(reportHandler.GetTopProducts))))
 	// /api/dashboard/summary -> GET (Admin Only) ?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&low_stock_threshold=5
 	mux.Handle("/api/dashboard/summary", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(reportHandler.GetDashboardSummary))))
+	// /api/dashboard/assets -> GET (Admin Only)
+	mux.Handle("/api/dashboard/assets", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(reportHandler.GetDashboardAssets))))
 
 	// Discount routes
 	// /api/discounts/active -> GET (Public/Kasir)

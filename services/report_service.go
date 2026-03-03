@@ -153,3 +153,8 @@ func (s *ReportService) CountLowStockProducts(threshold int) (int, error) {
 	}
 	return s.repo.CountLowStockProducts(threshold)
 }
+
+// GetDashboardAssets retrieves total asset cost and retail from products
+func (s *ReportService) GetDashboardAssets() (*models.AssetReport, error) {
+	return s.repo.GetDashboardAssets()
+}

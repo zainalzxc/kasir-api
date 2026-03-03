@@ -46,3 +46,10 @@ type DashboardSummary struct {
 	TransactionGrowth float64     `json:"transaction_growth"` // % perubahan jumlah transaksi vs periode sebelumnya
 	LowStockCount     int         `json:"low_stock_count"`    // Jumlah produk stok menipis (threshold dari query param)
 }
+
+// AssetReport represents summary of inventory capital and sales potential.
+// Struct untuk rangkuman Aset/Modal berjalan Inventory
+type AssetReport struct {
+	TotalAssetCost   float64 `json:"total_asset_cost"`   // Modal tertanam dari HPP
+	TotalAssetRetail float64 `json:"total_asset_retail"` // Potensi omset dari Harga Jual (Retail)
+}

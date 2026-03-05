@@ -127,9 +127,23 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		return nil, err
 	}
 
-	// Hitung laba bersih = laba kotor (total_profit) - pengeluaran_gaji
+	// Query 4: Total pengeluaran Operasional (Expenses) dalam periode yang sama
+	queryExpenses := `
+		SELECT 
+			COALESCE(SUM(amount), 0) as total_expenses
+		FROM expenses
+		WHERE expense_date BETWEEN $1 AND $2
+	`
+	err = r.db.QueryRow(queryExpenses, startDate, endDate).Scan(
+		&report.TotalExpenses,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Hitung laba bersih = laba kotor (total_profit) - pengeluaran_gaji - pengeluaran_operasional
 	// Pembelian stok tidak dikurangi karena itu adalah konversi aset Kas ke Inventory (bukan Opex).
-	report.LabaBersih = report.TotalProfit - report.TotalPayroll
+	report.LabaBersih = report.TotalProfit - report.TotalPayroll - report.TotalExpenses
 
 	// Query 3: Semua produk terjual (sorted by total_sales DESC)
 	// Profit per produk dihitung dengan distribusi proporsional tx-level discount:

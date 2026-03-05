@@ -99,6 +99,11 @@ func main() {
 	payrollService := services.NewPayrollService(payrollRepo)
 	payrollHandler := handlers.NewPayrollHandler(payrollService)
 
+	// Expense layers (Admin Only)
+	expenseRepo := repositories.NewExpenseRepository(db)
+	expenseService := services.NewExpenseService(expenseRepo)
+	expenseHandler := handlers.NewExpenseHandler(expenseService)
+
 	// ==================== SETUP ROUTER WITH MIDDLEWARE ====================
 	// Create a new ServeMux for better routing
 	mux := http.NewServeMux()
@@ -152,6 +157,29 @@ func main() {
 			payrollHandler.Update(w, r)
 		} else if r.Method == http.MethodDelete {
 			payrollHandler.Delete(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
+	// Expense routes (Admin Only)
+	mux.Handle("/api/expenses", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			expenseHandler.GetAll(w, r)
+		} else if r.Method == http.MethodPost {
+			expenseHandler.Create(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
+	mux.Handle("/api/expenses/", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			expenseHandler.GetByID(w, r)
+		} else if r.Method == http.MethodPut {
+			expenseHandler.Update(w, r)
+		} else if r.Method == http.MethodDelete {
+			expenseHandler.Delete(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}

@@ -104,6 +104,11 @@ func main() {
 	expenseService := services.NewExpenseService(expenseRepo)
 	expenseHandler := handlers.NewExpenseHandler(expenseService)
 
+	// Cash Flow layers (Admin Only)
+	cashFlowRepo := repositories.NewCashFlowRepository(db)
+	cashFlowService := services.NewCashFlowService(cashFlowRepo)
+	cashFlowHandler := handlers.NewCashFlowHandler(cashFlowService)
+
 	// ==================== SETUP ROUTER WITH MIDDLEWARE ====================
 	// Create a new ServeMux for better routing
 	mux := http.NewServeMux()
@@ -199,6 +204,12 @@ func main() {
 	mux.Handle("/api/dashboard/summary", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(reportHandler.GetDashboardSummary))))
 	// /api/dashboard/assets -> GET (Admin Only)
 	mux.Handle("/api/dashboard/assets", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(reportHandler.GetDashboardAssets))))
+
+	// Cash Flow routes
+	// /api/cash-flow/summary -> GET (Admin Only) ?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&timezone=Asia/Jakarta
+	mux.Handle("/api/cash-flow/summary", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(cashFlowHandler.GetSummary))))
+	// /api/cash-flow/trend -> GET (Admin Only) ?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&timezone=Asia/Jakarta
+	mux.Handle("/api/cash-flow/trend", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(cashFlowHandler.GetTrend))))
 
 	// Discount routes
 	// /api/discounts/active -> GET (Public/Kasir)

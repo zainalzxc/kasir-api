@@ -362,7 +362,7 @@ func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
 			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
 			COALESCE(hpp.total_qty, 0) as total_items,
-			(t.total_amount - COALESCE(t.discount_amount, 0)) - COALESCE(hpp.total_hpp, 0) as profit
+			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit
 		FROM transactions t
 		LEFT JOIN (
 			SELECT 
@@ -416,7 +416,7 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time) ([]
 			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
 			COALESCE(hpp.total_qty, 0) as total_items,
-			(t.total_amount - COALESCE(t.discount_amount, 0)) - COALESCE(hpp.total_hpp, 0) as profit
+			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit
 		FROM transactions t
 		LEFT JOIN (
 			SELECT 
@@ -469,7 +469,7 @@ func (r *TransactionRepository) GetByID(id int) (*models.TransactionWithItems, e
 			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
 			COALESCE(hpp.total_qty, 0) as total_items,
-			(t.total_amount - COALESCE(t.discount_amount, 0)) - COALESCE(hpp.total_hpp, 0) as profit
+			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit
 		FROM transactions t
 		LEFT JOIN (
 			SELECT 

@@ -1,6 +1,8 @@
 package models
 
-import "time"
+import (
+	"time"
+)
 
 // User adalah struct untuk data user (Admin & Kasir)
 type User struct {

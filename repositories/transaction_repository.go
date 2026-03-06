@@ -296,8 +296,8 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 
 	var transactionID int
 	err = tx.QueryRow(
-		"INSERT INTO transactions (total_amount, discount_id, discount_amount, payment_amount, change_amount) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-		finalTotal, usedDiscountID, savedDiscountAmount, paymentAmount, changeAmount,
+		"INSERT INTO transactions (total_amount, discount_id, discount_amount, payment_amount, change_amount, created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+		finalTotal, usedDiscountID, savedDiscountAmount, paymentAmount, changeAmount, req.CreatedBy,
 	).Scan(&transactionID)
 	if err != nil {
 		return nil, err
@@ -342,12 +342,13 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		DiscountAmount: totalDiscount,
 		PaymentAmount:  paymentAmount,
 		ChangeAmount:   changeAmount,
+		CreatedBy:      &req.CreatedBy,
 	}, nil
 }
 
 // GetAll retrieves all transactions ordered by date descending
 // Fungsi ini mengambil semua data transaksi untuk history, termasuk profit per transaksi
-func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
+func (r *TransactionRepository) GetAll(userID *int) ([]models.Transaction, error) {
 	// Profit = (total_amount - discount_amount) - HPP
 	// total_amount = total setelah diskon item
 	// discount_amount = diskon transaksi (terpisah, perlu dikurangi)
@@ -362,7 +363,8 @@ func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
 			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
 			COALESCE(hpp.total_qty, 0) as total_items,
-			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit
+			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit,
+			t.created_by
 		FROM transactions t
 		LEFT JOIN (
 			SELECT 
@@ -372,10 +374,17 @@ func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
 			FROM transaction_details td
 			GROUP BY td.transaction_id
 		) hpp ON hpp.transaction_id = t.id
-		ORDER BY t.created_at DESC
 	`
 
-	rows, err := r.db.Query(query)
+	args := []interface{}{}
+	if userID != nil {
+		query += " WHERE t.created_by = $1 "
+		args = append(args, *userID)
+	}
+
+	query += " ORDER BY t.created_at DESC"
+
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -386,8 +395,9 @@ func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
 	for rows.Next() {
 		var t models.Transaction
 		var discountID sql.NullInt64
+		var createdBy sql.NullInt64
 
-		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.PaymentAmount, &t.ChangeAmount, &t.CreatedAt, &t.TotalItems, &t.Profit)
+		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.PaymentAmount, &t.ChangeAmount, &t.CreatedAt, &t.TotalItems, &t.Profit, &createdBy)
 		if err != nil {
 			return nil, err
 		}
@@ -395,6 +405,10 @@ func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
 		if discountID.Valid {
 			id := int(discountID.Int64)
 			t.DiscountID = &id
+		}
+		if createdBy.Valid {
+			id := int(createdBy.Int64)
+			t.CreatedBy = &id
 		}
 
 		transactions = append(transactions, t)
@@ -405,7 +419,7 @@ func (r *TransactionRepository) GetAll() ([]models.Transaction, error) {
 
 // GetByDateRange retrieves transactions within a date range
 // startDate dan endDate sudah mengandung timezone yang benar dari handler
-func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time) ([]models.Transaction, error) {
+func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, userID *int) ([]models.Transaction, error) {
 	query := `
 		SELECT 
 			t.id, 
@@ -416,7 +430,8 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time) ([]
 			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
 			COALESCE(hpp.total_qty, 0) as total_items,
-			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit
+			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit,
+			t.created_by
 		FROM transactions t
 		LEFT JOIN (
 			SELECT 
@@ -427,10 +442,18 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time) ([]
 			GROUP BY td.transaction_id
 		) hpp ON hpp.transaction_id = t.id
 		WHERE t.created_at BETWEEN $1 AND $2
-		ORDER BY t.created_at DESC
 	`
 
-	rows, err := r.db.Query(query, startDate, endDate)
+	args := []interface{}{startDate, endDate}
+
+	if userID != nil {
+		query += " AND t.created_by = $3 "
+		args = append(args, *userID)
+	}
+
+	query += " ORDER BY t.created_at DESC"
+
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -441,8 +464,9 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time) ([]
 	for rows.Next() {
 		var t models.Transaction
 		var discountID sql.NullInt64
+		var createdBy sql.NullInt64
 
-		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.PaymentAmount, &t.ChangeAmount, &t.CreatedAt, &t.TotalItems, &t.Profit)
+		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.PaymentAmount, &t.ChangeAmount, &t.CreatedAt, &t.TotalItems, &t.Profit, &createdBy)
 		if err != nil {
 			return nil, err
 		}
@@ -450,6 +474,10 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time) ([]
 		if discountID.Valid {
 			id := int(discountID.Int64)
 			t.DiscountID = &id
+		}
+		if createdBy.Valid {
+			id := int(createdBy.Int64)
+			t.CreatedBy = &id
 		}
 
 		transactions = append(transactions, t)

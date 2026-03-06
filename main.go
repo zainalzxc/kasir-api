@@ -13,6 +13,7 @@ import (
 	"log/slog"               // Package untuk structured logging
 	"net/http"               // Package untuk HTTP server
 	"os"                     // Package untuk environment variables
+	"strings"
 )
 
 func main() {
@@ -59,6 +60,8 @@ func main() {
 	userRepo := repositories.NewUserRepository(db)      // Inject db ke repository
 	authService := services.NewAuthService(userRepo)    // Inject repo ke service
 	authHandler := handlers.NewAuthHandler(authService) // Inject service ke handler
+	userService := services.NewUserService(userRepo)    // Inject repo ke service
+	userHandler := handlers.NewUserHandler(userService) // Inject service ke handler
 
 	// Product layers
 	productRepo := repositories.NewProductRepository(db)                    // Inject db ke repository
@@ -259,6 +262,27 @@ func main() {
 	// Middleware for authentication
 	// We wrap the handlers with AuthMiddleware to ensure only authenticated users can access
 
+	// User routes (Admin Only)
+	mux.Handle("/api/users", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			userHandler.GetAll(w, r)
+		} else if r.Method == http.MethodPost {
+			userHandler.Create(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
+	mux.Handle("/api/users/", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/password") {
+			userHandler.UpdatePassword(w, r)
+		} else if r.Method == http.MethodDelete {
+			userHandler.Delete(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
 	// Product routes
 	// /api/produk/ -> GET (by ID), PUT, DELETE
 	mux.Handle("/api/produk/", middleware.AuthMiddleware(http.HandlerFunc(productHandler.HandleProductByID)))
@@ -313,6 +337,12 @@ func main() {
 	fmt.Println("📚 Public Endpoints:")
 	fmt.Println("  - GET    /health")
 	fmt.Println("  - POST   /api/auth/login")
+	fmt.Println("")
+	fmt.Println("📚 User Endpoints (Admin Only):")
+	fmt.Println("  - GET    /api/users")
+	fmt.Println("  - POST   /api/users")
+	fmt.Println("  - PUT    /api/users/{id}/password")
+	fmt.Println("  - DELETE /api/users/{id}")
 	fmt.Println("")
 	fmt.Println("📚 Product Endpoints:")
 	fmt.Println("  - GET    /api/produk")

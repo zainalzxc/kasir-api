@@ -18,18 +18,18 @@ func NewReportService(repo *repositories.ReportRepository) *ReportService {
 }
 
 // GetDailySalesReport retrieves sales report for today (kept for backward compat)
-func (s *ReportService) GetDailySalesReport() (*models.SalesReport, error) {
-	return s.repo.GetDailySalesReport()
+func (s *ReportService) GetDailySalesReport(userID *int) (*models.SalesReport, error) {
+	return s.repo.GetDailySalesReport(userID)
 }
 
 // GetSalesReportByDateRange retrieves sales report for a date range
 // startDate dan endDate sudah mengandung timezone yang benar dari handler
-func (s *ReportService) GetSalesReportByDateRange(startDate, endDate time.Time) (*models.SalesReport, error) {
+func (s *ReportService) GetSalesReportByDateRange(startDate, endDate time.Time, userID *int) (*models.SalesReport, error) {
 	if startDate.After(endDate) {
 		return nil, fmt.Errorf("start_date harus sebelum atau sama dengan end_date")
 	}
 
-	return s.repo.GetSalesReportByDateRange(startDate, endDate)
+	return s.repo.GetSalesReportByDateRange(startDate, endDate, userID)
 }
 
 // GetSalesTrend retrieves sales trend data based on period type
@@ -90,12 +90,12 @@ func (s *ReportService) GetDashboardSummary(startDate, endDate time.Time, loc *t
 	prevEndDate := startDate.Add(-time.Nanosecond)
 	prevStartDate := prevEndDate.Add(-duration)
 
-	current, err := s.repo.GetSalesReportByDateRange(startDate, endDate)
+	current, err := s.repo.GetSalesReportByDateRange(startDate, endDate, nil)
 	if err != nil {
 		return nil, fmt.Errorf("gagal ambil data periode saat ini: %w", err)
 	}
 
-	prev, err := s.repo.GetSalesReportByDateRange(prevStartDate, prevEndDate)
+	prev, err := s.repo.GetSalesReportByDateRange(prevStartDate, prevEndDate, nil)
 	if err != nil {
 		return nil, fmt.Errorf("gagal ambil data periode sebelumnya: %w", err)
 	}

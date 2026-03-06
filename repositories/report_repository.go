@@ -30,28 +30,42 @@ func NewReportRepository(db *sql.DB) *ReportRepository {
 }
 
 // GetDailySalesReport retrieves sales report for today (fallback, uses default timezone)
-func (r *ReportRepository) GetDailySalesReport() (*models.SalesReport, error) {
+func (r *ReportRepository) GetDailySalesReport(userID *int) (*models.SalesReport, error) {
 	now := time.Now().In(defaultTimezone)
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, defaultTimezone)
 	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, defaultTimezone)
 
-	return r.getSalesReportByDateRange(startOfDay, endOfDay)
+	return r.getSalesReportByDateRange(startOfDay, endOfDay, userID)
 }
 
 // GetSalesReportByDateRange retrieves sales report for a date range
 // startDate dan endDate sudah mengandung timezone yang benar dari handler/caller
-func (r *ReportRepository) GetSalesReportByDateRange(startDate, endDate time.Time) (*models.SalesReport, error) {
+func (r *ReportRepository) GetSalesReportByDateRange(startDate, endDate time.Time, userID *int) (*models.SalesReport, error) {
 	// Gunakan timezone yang sudah embedded di startDate/endDate (dari handler)
 	loc := startDate.Location()
 	startOfDay := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, loc)
 	endOfDay := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 999999999, loc)
 
-	return r.getSalesReportByDateRange(startOfDay, endOfDay)
+	return r.getSalesReportByDateRange(startOfDay, endOfDay, userID)
 }
 
 // getSalesReportByDateRange is a private helper function
-func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Time) (*models.SalesReport, error) {
+func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Time, userID *int) (*models.SalesReport, error) {
 	var report models.SalesReport
+
+	// Prepare arguments context
+	argsBase := []interface{}{startDate, endDate}
+	userFilterStr := ""
+	if userID != nil {
+		userFilterStr = " AND created_by = $3 "
+		argsBase = append(argsBase, *userID)
+	}
+
+	// Prepare join user Filter String context
+	userJoinFilterStr := ""
+	if userID != nil {
+		userJoinFilterStr = " AND t.created_by = $3 "
+	}
 
 	// Query 1A: Total revenue (nett) dan total transaksi
 	// Revenue nett = total_amount - discount_amount (tx-level discount)
@@ -60,9 +74,9 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 			COALESCE(SUM(total_amount), 0) as total_revenue,
 			COUNT(*) as total_transaksi
 		FROM transactions
-		WHERE created_at BETWEEN $1 AND $2
+		WHERE created_at BETWEEN $1 AND $2 ` + userFilterStr + `
 	`
-	err := r.db.QueryRow(queryRevenue, startDate, endDate).Scan(
+	err := r.db.QueryRow(queryRevenue, argsBase...).Scan(
 		&report.TotalRevenue,
 		&report.TotalTransaksi,
 	)
@@ -86,9 +100,9 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 			FROM transaction_details td
 			GROUP BY td.transaction_id
 		) hpp ON hpp.transaction_id = t.id
-		WHERE t.created_at BETWEEN $1 AND $2
+		WHERE t.created_at BETWEEN $1 AND $2 ` + userJoinFilterStr + `
 	`
-	err = r.db.QueryRow(queryItems, startDate, endDate).Scan(
+	err = r.db.QueryRow(queryItems, argsBase...).Scan(
 		&report.TotalItemsSold,
 		&report.TotalProfit,
 	)
@@ -96,6 +110,9 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		return nil, err
 	}
 
+	// Note: Pembelian (Pengeluaran Barang), Gaji (Payroll), dan Operasional (Expenses)
+	// merupakan variabel bisnis tingkat toko bukan kasir. Jadi query ini tidak
+	// dikenakan user_id filter.
 	// Query 2: Total pengeluaran (pembelian) dalam periode yang sama
 	queryPengeluaran := `
 		SELECT 
@@ -145,7 +162,7 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 	// Pembelian stok tidak dikurangi karena itu adalah konversi aset Kas ke Inventory (bukan Opex).
 	report.LabaBersih = report.TotalProfit - report.TotalPayroll - report.TotalExpenses
 
-	// Query 3: Semua produk terjual (sorted by total_sales DESC)
+	// Query 5: Semua produk terjual (sorted by total_sales DESC)
 	// Profit per produk dihitung dengan distribusi proporsional tx-level discount:
 	//   item_share = (td.subtotal / SUM(subtotal per transaksi)) × tx.discount_amount
 	//   item_profit = td.subtotal - (harga_beli × qty) - item_share
@@ -166,12 +183,12 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		FROM transaction_details td
 		JOIN products p ON td.product_id = p.id
 		JOIN transactions t ON td.transaction_id = t.id
-		WHERE t.created_at BETWEEN $1 AND $2
+		WHERE t.created_at BETWEEN $1 AND $2 ` + userJoinFilterStr + `
 		GROUP BY p.id, p.nama
 		ORDER BY total_sales DESC
 	`
 
-	rows, err := r.db.Query(queryProducts, startDate, endDate)
+	rows, err := r.db.Query(queryProducts, argsBase...)
 	if err != nil {
 		return nil, err
 	}

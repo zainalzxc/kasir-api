@@ -19,6 +19,7 @@ var (
 	ErrInvalidRole        = errors.New("role tidak valid")
 	ErrUnauthorized       = errors.New("tidak memiliki akses")
 	ErrForbidden          = errors.New("akses ditolak")
+	ErrCannotDeleteSelf   = errors.New("tidak dapat menghapus diri sendiri")
 )
 
 // Auth errors

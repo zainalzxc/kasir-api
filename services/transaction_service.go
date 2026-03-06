@@ -36,13 +36,13 @@ func (s *TransactionService) Checkout(req *models.CheckoutRequest) (*models.Tran
 }
 
 // GetAll returns all transactions
-func (s *TransactionService) GetAll() ([]models.Transaction, error) {
-	return s.repo.GetAll()
+func (s *TransactionService) GetAll(userID *int) ([]models.Transaction, error) {
+	return s.repo.GetAll(userID)
 }
 
 // GetByDateRange returns transactions within a date range
-func (s *TransactionService) GetByDateRange(startDate, endDate time.Time) ([]models.Transaction, error) {
-	return s.repo.GetByDateRange(startDate, endDate)
+func (s *TransactionService) GetByDateRange(startDate, endDate time.Time, userID *int) ([]models.Transaction, error) {
+	return s.repo.GetByDateRange(startDate, endDate, userID)
 }
 
 // GetByID returns a transaction with items detail

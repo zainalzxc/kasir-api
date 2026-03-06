@@ -53,13 +53,22 @@ func (h *ReportHandler) GetDailySalesReport(w http.ResponseWriter, r *http.Reque
 	// Parse timezone dari query parameter (default: Asia/Jakarta)
 	loc, _ := parseTimezone(r)
 
+	// Parsing user_id optional
+	var userID *int
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr != "" {
+		if id, err := strconv.Atoi(userIDStr); err == nil {
+			userID = &id
+		}
+	}
+
 	// Hitung "hari ini" berdasarkan timezone user
 	now := time.Now().In(loc)
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, loc)
 
 	// Panggil service dengan date range yang sudah di-timezone
-	report, err := h.service.GetSalesReportByDateRange(startOfDay, endOfDay)
+	report, err := h.service.GetSalesReportByDateRange(startOfDay, endOfDay, userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -89,6 +98,15 @@ func (h *ReportHandler) GetSalesReportByDateRange(w http.ResponseWriter, r *http
 	// Parse timezone (default: Asia/Jakarta)
 	loc, _ := parseTimezone(r)
 
+	// Parsing user_id optional
+	var userID *int
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr != "" {
+		if id, err := strconv.Atoi(userIDStr); err == nil {
+			userID = &id
+		}
+	}
+
 	// Parse tanggal
 	startDateParsed, err := time.Parse("2006-01-02", startDateStr)
 	if err != nil {
@@ -109,7 +127,7 @@ func (h *ReportHandler) GetSalesReportByDateRange(w http.ResponseWriter, r *http
 	startDate := time.Date(startDateParsed.Year(), startDateParsed.Month(), startDateParsed.Day(), 0, 0, 0, 0, loc)
 	endDate := time.Date(endDateParsed.Year(), endDateParsed.Month(), endDateParsed.Day(), 23, 59, 59, 999999999, loc)
 
-	report, err := h.service.GetSalesReportByDateRange(startDate, endDate)
+	report, err := h.service.GetSalesReportByDateRange(startDate, endDate, userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

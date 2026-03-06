@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"kasir-api/middleware"
 	"kasir-api/models"
 	"kasir-api/services"
 	"net/http"
@@ -35,6 +36,12 @@ func (h *TransactionHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1. Get current user
+	currentUser := middleware.GetUserFromContext(r.Context())
+	if currentUser != nil {
+		req.CreatedBy = currentUser.ID
+	}
+
 	transaction, err := h.service.Checkout(&req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -57,6 +64,15 @@ func (h *TransactionHandler) HandleTransactions(w http.ResponseWriter, r *http.R
 	// Ambil optional query parameters
 	startDateStr := r.URL.Query().Get("start_date")
 	endDateStr := r.URL.Query().Get("end_date")
+
+	// Parsing user_id optional
+	var userID *int
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr != "" {
+		if id, err := strconv.Atoi(userIDStr); err == nil {
+			userID = &id
+		}
+	}
 
 	var transactions []models.Transaction
 	var err error
@@ -82,10 +98,10 @@ func (h *TransactionHandler) HandleTransactions(w http.ResponseWriter, r *http.R
 		startDate := time.Date(startDateParsed.Year(), startDateParsed.Month(), startDateParsed.Day(), 0, 0, 0, 0, loc)
 		endDate := time.Date(endDateParsed.Year(), endDateParsed.Month(), endDateParsed.Day(), 23, 59, 59, 999999999, loc)
 
-		transactions, err = h.service.GetByDateRange(startDate, endDate)
+		transactions, err = h.service.GetByDateRange(startDate, endDate, userID)
 	} else {
 		// Tanpa filter tanggal → ambil semua
-		transactions, err = h.service.GetAll()
+		transactions, err = h.service.GetAll(userID)
 	}
 
 	if err != nil {

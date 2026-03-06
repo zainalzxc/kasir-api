@@ -9,10 +9,11 @@ type Transaction struct {
 	CreatedAt      time.Time `json:"created_at" db:"created_at"`
 	DiscountID     *int      `json:"discount_id,omitempty" db:"discount_id"`
 	DiscountAmount float64   `json:"discount_amount" db:"discount_amount"`
-	PaymentAmount  float64   `json:"payment_amount" db:"payment_amount"` // Uang bayar customer
-	ChangeAmount   float64   `json:"change_amount" db:"change_amount"`   // Uang kembalian
-	TotalItems     int       `json:"total_items"`                        // Computed: total items
-	Profit         float64   `json:"profit"`                             // Computed: keuntungan
+	PaymentAmount  float64   `json:"payment_amount" db:"payment_amount"`   // Uang bayar customer
+	ChangeAmount   float64   `json:"change_amount" db:"change_amount"`     // Uang kembalian
+	TotalItems     int       `json:"total_items"`                          // Computed: total items
+	Profit         float64   `json:"profit"`                               // Computed: keuntungan
+	CreatedBy      *int      `json:"created_by,omitempty" db:"created_by"` // User ID pembuat transaksi
 }
 
 // TransactionDetail represents a transaction detail item
@@ -41,6 +42,7 @@ type TransactionWithItems struct {
 	ChangeAmount   float64             `json:"change_amount"`
 	Profit         float64             `json:"profit"`
 	TotalItems     int                 `json:"total_items"`
+	CreatedBy      *int                `json:"created_by,omitempty"`
 	CreatedAt      time.Time           `json:"created_at"`
 	Items          []TransactionDetail `json:"items"`
 }
@@ -61,4 +63,5 @@ type CheckoutRequest struct {
 	DiscountID     *int           `json:"discount_id"`     // Optional: ID diskon global
 	DiscountAmount float64        `json:"discount_amount"` // Total diskon transaksi (dari frontend)
 	PaymentAmount  float64        `json:"payment_amount"`  // Uang bayar customer
+	CreatedBy      int            `json:"-"`               // User ID pembuat transaksi (diisi dari context auth)
 }

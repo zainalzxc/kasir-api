@@ -4,6 +4,8 @@ import (
 	"kasir-api/models"
 	"kasir-api/repositories"
 	"kasir-api/utils"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // UserService handles user management logic
@@ -51,18 +53,32 @@ func (s *UserService) CreateUser(username, password, role string) (*models.User,
 }
 
 // UpdatePassword updates a user's password (by admin)
-func (s *UserService) UpdatePassword(id int, newPassword string) error {
-	_, err := s.userRepo.GetByID(id)
+// Requires the admin's own current password to authorize the change.
+func (s *UserService) UpdatePassword(targetID int, newPassword string, currentAdminID int, currentPassword string) error {
+	// 1. Verifikasi user target ada
+	_, err := s.userRepo.GetByID(targetID)
 	if err != nil {
-		return err // Ensure user exists
+		return err
 	}
 
+	// 2. Ambil password hash admin yang sedang login
+	admin, err := s.userRepo.GetByID(currentAdminID)
+	if err != nil {
+		return models.ErrUserNotFound
+	}
+
+	// 3. Bandingkan current_password dengan hash admin
+	if err := bcrypt.CompareHashAndPassword([]byte(admin.Password), []byte(currentPassword)); err != nil {
+		return models.ErrInvalidCredentials
+	}
+
+	// 4. Hash password baru
 	hashedPassword, err := utils.HashPassword(newPassword)
 	if err != nil {
 		return err
 	}
 
-	return s.userRepo.UpdatePassword(id, hashedPassword)
+	return s.userRepo.UpdatePassword(targetID, hashedPassword)
 }
 
 // DeleteUser deletes a user (except themselves)

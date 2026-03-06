@@ -76,28 +76,46 @@ func (h *UserHandler) UpdatePassword(w http.ResponseWriter, r *http.Request) {
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/users/")
 	idStr = strings.TrimSuffix(idStr, "/password")
 
-	id, err := strconv.Atoi(idStr)
+	targetID, err := strconv.Atoi(idStr)
 	if err != nil {
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
 	}
 
 	var req struct {
-		Password string `json:"password"`
+		CurrentPassword string `json:"current_password"`
+		Password        string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
+	if req.CurrentPassword == "" {
+		http.Error(w, "current_password is required", http.StatusBadRequest)
+		return
+	}
 	if req.Password == "" {
-		http.Error(w, "Password is required", http.StatusBadRequest)
+		http.Error(w, "password is required", http.StatusBadRequest)
 		return
 	}
 
-	err = h.userService.UpdatePassword(id, req.Password)
+	// Ambil admin yang sedang login dari JWT context
+	currentUser := middleware.GetUserFromContext(r.Context())
+	if currentUser == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	err = h.userService.UpdatePassword(targetID, req.Password, currentUser.ID, req.CurrentPassword)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if err == models.ErrInvalidCredentials {
+			http.Error(w, "Password saat ini salah", http.StatusUnauthorized)
+		} else if err == models.ErrUserNotFound {
+			http.Error(w, "User tidak ditemukan", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 

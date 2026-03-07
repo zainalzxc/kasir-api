@@ -79,6 +79,9 @@ func (s *EmployeeService) Update(id int, req models.UpdateEmployeeRequest) (*mod
 	if req.UserID != nil {
 		emp.UserID = req.UserID
 	}
+	if req.Aktif != nil {
+		emp.Aktif = *req.Aktif
+	}
 	if req.TanggalMasuk != nil && *req.TanggalMasuk != "" {
 		t, err := time.Parse("2006-01-02", *req.TanggalMasuk)
 		if err == nil {

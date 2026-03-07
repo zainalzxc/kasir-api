@@ -97,12 +97,16 @@ func (r *EmployeeRepository) Create(e *models.Employee) error {
 // Update memperbarui data karyawan
 func (r *EmployeeRepository) Update(e *models.Employee) error {
 	query := `UPDATE employees 
-	          SET nama = $1, posisi = $2, gaji_pokok = $3, no_hp = $4, alamat = $5, tanggal_masuk = $6, user_id = $7
-	          WHERE id = $8 RETURNING updated_at`
+	          SET nama = $1, posisi = $2, gaji_pokok = $3, no_hp = $4, alamat = $5, tanggal_masuk = $6, user_id = $7, aktif = $8
+	          WHERE id = $9
+	          RETURNING id, nama, posisi, gaji_pokok, no_hp, alamat, tanggal_masuk, aktif, user_id, created_at, updated_at`
 
 	return r.db.QueryRow(
-		query, e.Nama, e.Posisi, e.GajiPokok, e.NoHp, e.Alamat, e.TanggalMasuk, e.UserID, e.ID,
-	).Scan(&e.UpdatedAt)
+		query, e.Nama, e.Posisi, e.GajiPokok, e.NoHp, e.Alamat, e.TanggalMasuk, e.UserID, e.Aktif, e.ID,
+	).Scan(
+		&e.ID, &e.Nama, &e.Posisi, &e.GajiPokok, &e.NoHp, &e.Alamat,
+		&e.TanggalMasuk, &e.Aktif, &e.UserID, &e.CreatedAt, &e.UpdatedAt,
+	)
 }
 
 // SoftDelete melakukan nonaktif pada karyawan (set aktif = false)

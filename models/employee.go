@@ -40,4 +40,5 @@ type UpdateEmployeeRequest struct {
 	Alamat       *string  `json:"alamat"`
 	TanggalMasuk *string  `json:"tanggal_masuk"`
 	UserID       *int     `json:"user_id"`
+	Aktif        *bool    `json:"aktif"`
 }

@@ -364,7 +364,8 @@ func (r *TransactionRepository) GetAll(userID *int) ([]models.Transaction, error
 			t.created_at,
 			COALESCE(hpp.total_qty, 0) as total_items,
 			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit,
-			t.created_by
+			t.created_by,
+			u.username
 		FROM transactions t
 		LEFT JOIN (
 			SELECT 
@@ -374,6 +375,7 @@ func (r *TransactionRepository) GetAll(userID *int) ([]models.Transaction, error
 			FROM transaction_details td
 			GROUP BY td.transaction_id
 		) hpp ON hpp.transaction_id = t.id
+		LEFT JOIN users u ON t.created_by = u.id
 	`
 
 	args := []interface{}{}
@@ -396,8 +398,9 @@ func (r *TransactionRepository) GetAll(userID *int) ([]models.Transaction, error
 		var t models.Transaction
 		var discountID sql.NullInt64
 		var createdBy sql.NullInt64
+		var username sql.NullString
 
-		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.PaymentAmount, &t.ChangeAmount, &t.CreatedAt, &t.TotalItems, &t.Profit, &createdBy)
+		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.PaymentAmount, &t.ChangeAmount, &t.CreatedAt, &t.TotalItems, &t.Profit, &createdBy, &username)
 		if err != nil {
 			return nil, err
 		}
@@ -409,6 +412,9 @@ func (r *TransactionRepository) GetAll(userID *int) ([]models.Transaction, error
 		if createdBy.Valid {
 			id := int(createdBy.Int64)
 			t.CreatedBy = &id
+		}
+		if username.Valid {
+			t.Username = username.String
 		}
 
 		transactions = append(transactions, t)
@@ -431,7 +437,8 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, use
 			t.created_at,
 			COALESCE(hpp.total_qty, 0) as total_items,
 			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit,
-			t.created_by
+			t.created_by,
+			u.username
 		FROM transactions t
 		LEFT JOIN (
 			SELECT 
@@ -441,6 +448,7 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, use
 			FROM transaction_details td
 			GROUP BY td.transaction_id
 		) hpp ON hpp.transaction_id = t.id
+		LEFT JOIN users u ON t.created_by = u.id
 		WHERE t.created_at BETWEEN $1 AND $2
 	`
 
@@ -465,8 +473,9 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, use
 		var t models.Transaction
 		var discountID sql.NullInt64
 		var createdBy sql.NullInt64
+		var username sql.NullString
 
-		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.PaymentAmount, &t.ChangeAmount, &t.CreatedAt, &t.TotalItems, &t.Profit, &createdBy)
+		err := rows.Scan(&t.ID, &t.TotalAmount, &discountID, &t.DiscountAmount, &t.PaymentAmount, &t.ChangeAmount, &t.CreatedAt, &t.TotalItems, &t.Profit, &createdBy, &username)
 		if err != nil {
 			return nil, err
 		}
@@ -478,6 +487,9 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, use
 		if createdBy.Valid {
 			id := int(createdBy.Int64)
 			t.CreatedBy = &id
+		}
+		if username.Valid {
+			t.Username = username.String
 		}
 
 		transactions = append(transactions, t)
@@ -497,7 +509,9 @@ func (r *TransactionRepository) GetByID(id int) (*models.TransactionWithItems, e
 			COALESCE(t.change_amount, 0) as change_amount,
 			t.created_at,
 			COALESCE(hpp.total_qty, 0) as total_items,
-			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit
+			t.total_amount - COALESCE(hpp.total_hpp, 0) as profit,
+			t.created_by,
+			u.username
 		FROM transactions t
 		LEFT JOIN (
 			SELECT 
@@ -507,10 +521,14 @@ func (r *TransactionRepository) GetByID(id int) (*models.TransactionWithItems, e
 			FROM transaction_details td
 			GROUP BY td.transaction_id
 		) hpp ON hpp.transaction_id = t.id
+		LEFT JOIN users u ON t.created_by = u.id
 		WHERE t.id = $1
 	`
 
 	var result models.TransactionWithItems
+	var createdBy sql.NullInt64
+	var username sql.NullString
+
 	err := r.db.QueryRow(queryHeader, id).Scan(
 		&result.ID,
 		&result.TotalAmount,
@@ -520,12 +538,22 @@ func (r *TransactionRepository) GetByID(id int) (*models.TransactionWithItems, e
 		&result.CreatedAt,
 		&result.TotalItems,
 		&result.Profit,
+		&createdBy,
+		&username,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("transaksi dengan ID %d tidak ditemukan", id)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("gagal mengambil data transaksi: %w", err)
+	}
+
+	if createdBy.Valid {
+		id := int(createdBy.Int64)
+		result.CreatedBy = &id
+	}
+	if username.Valid {
+		result.Username = username.String
 	}
 
 	queryItems := `

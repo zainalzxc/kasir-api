@@ -14,6 +14,7 @@ type Transaction struct {
 	TotalItems     int       `json:"total_items"`                          // Computed: total items
 	Profit         float64   `json:"profit"`                               // Computed: keuntungan
 	CreatedBy      *int      `json:"created_by,omitempty" db:"created_by"` // User ID pembuat transaksi
+	Username       string    `json:"username,omitempty"`                   // Nama kasir (dari JOIN users)
 }
 
 // TransactionDetail represents a transaction detail item
@@ -43,6 +44,7 @@ type TransactionWithItems struct {
 	Profit         float64             `json:"profit"`
 	TotalItems     int                 `json:"total_items"`
 	CreatedBy      *int                `json:"created_by,omitempty"`
+	Username       string              `json:"username,omitempty"` // Nama kasir
 	CreatedAt      time.Time           `json:"created_at"`
 	Items          []TransactionDetail `json:"items"`
 }

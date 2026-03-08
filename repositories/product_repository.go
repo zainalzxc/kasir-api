@@ -37,6 +37,7 @@ func (r *ProductRepository) GetAll(searchName string, searchBarcode string, pagi
 			p.harga_beli,
 			p.default_discount_type,
 			p.default_discount_value,
+			p.is_featured,
 			p.created_by,
 			c.id as category_id_full,
 			c.nama as category_name,
@@ -133,6 +134,7 @@ func (r *ProductRepository) GetAll(searchName string, searchBarcode string, pagi
 			&hargaBeli,
 			&defaultDiscType,
 			&defaultDiscValue,
+			&product.IsFeatured,
 			&createdBy,
 			&categoryID,
 			&categoryName,
@@ -205,6 +207,7 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 			p.harga_beli,
 			p.default_discount_type,
 			p.default_discount_value,
+			p.is_featured,
 			p.created_by,
 			c.id as category_id_full,
 			c.nama as category_name,
@@ -242,6 +245,7 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 		&hargaBeli,
 		&defaultDiscType,
 		&defaultDiscValue,
+		&product.IsFeatured,
 		&createdBy,
 		&categoryID,
 		&categoryName,
@@ -305,8 +309,8 @@ func (r *ProductRepository) Create(product *models.Product) error {
 	// - HargaBeli akan diupdate (EXCLUDED.harga_beli)
 	// Jika belum ada, akan insert produk baru
 	query := `
-		INSERT INTO products (nama, harga, stok, category_id, harga_beli, created_by, barcode, default_discount_type, default_discount_value) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO products (nama, harga, stok, category_id, harga_beli, created_by, barcode, default_discount_type, default_discount_value, is_featured) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (nama) 
 		DO UPDATE SET 
 			harga = EXCLUDED.harga,
@@ -315,12 +319,13 @@ func (r *ProductRepository) Create(product *models.Product) error {
 			harga_beli = EXCLUDED.harga_beli,
 			barcode = EXCLUDED.barcode,
 			default_discount_type = EXCLUDED.default_discount_type,
-			default_discount_value = EXCLUDED.default_discount_value
+			default_discount_value = EXCLUDED.default_discount_value,
+			is_featured = EXCLUDED.is_featured
 		RETURNING id, stok
 	`
 
 	// Execute query dan scan ID + stok terbaru yang di-return
-	err := r.db.QueryRow(query, product.Nama, product.Harga, product.Stok, product.CategoryID, product.HargaBeli, product.CreatedBy, product.Barcode, product.DefaultDiscountType, product.DefaultDiscountValue).Scan(&product.ID, &product.Stok)
+	err := r.db.QueryRow(query, product.Nama, product.Harga, product.Stok, product.CategoryID, product.HargaBeli, product.CreatedBy, product.Barcode, product.DefaultDiscountType, product.DefaultDiscountValue, product.IsFeatured).Scan(&product.ID, &product.Stok)
 
 	return err // Return error (nil kalau sukses)
 }
@@ -329,11 +334,11 @@ func (r *ProductRepository) Create(product *models.Product) error {
 // Stok dikelola lewat pembelian (POST /api/purchases) dan penjualan (POST /api/checkout)
 // Harga beli dikelola lewat pembelian (POST /api/purchases)
 func (r *ProductRepository) Update(product *models.Product) error {
-	// SQL query untuk UPDATE — nama, harga jual, kategori, barcode, dan diskon default
+	// SQL query untuk UPDATE — nama, harga jual, kategori, barcode, diskon default, dan is_featured
 	// Stok dan harga_beli TIDAK bisa diubah dari sini
-	query := "UPDATE products SET nama = $1, harga = $2, category_id = $3, barcode = $4, default_discount_type = $5, default_discount_value = $6 WHERE id = $7"
+	query := "UPDATE products SET nama = $1, harga = $2, category_id = $3, barcode = $4, default_discount_type = $5, default_discount_value = $6, is_featured = $7 WHERE id = $8"
 
-	_, err := r.db.Exec(query, product.Nama, product.Harga, product.CategoryID, product.Barcode, product.DefaultDiscountType, product.DefaultDiscountValue, product.ID)
+	_, err := r.db.Exec(query, product.Nama, product.Harga, product.CategoryID, product.Barcode, product.DefaultDiscountType, product.DefaultDiscountValue, product.IsFeatured, product.ID)
 
 	return err
 }
@@ -352,6 +357,7 @@ func (r *ProductRepository) GetByBarcode(barcode string) (*models.Product, error
 			p.harga_beli,
 			p.default_discount_type,
 			p.default_discount_value,
+			p.is_featured,
 			p.created_by,
 			c.id as category_id_full,
 			c.nama as category_name,
@@ -387,6 +393,7 @@ func (r *ProductRepository) GetByBarcode(barcode string) (*models.Product, error
 		&hargaBeli,
 		&defaultDiscType,
 		&defaultDiscValue,
+		&product.IsFeatured,
 		&createdBy,
 		&categoryID,
 		&categoryName,
